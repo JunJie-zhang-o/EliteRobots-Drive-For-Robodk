@@ -13,7 +13,7 @@
 #
 #
 #
-# This is a Python module that allows driving a KUKA IIWA robot.
+# This is a Python module that allows driving a EliteRobots CS robot.
 # This Python module can be run directly in console mode to test its functionality.
 # This module allows communicating with a robot through the command line.
 # The same commands we can input manually are used by RoboDK to drive the robot from the PC.
@@ -431,7 +431,7 @@ class ReadAlarm:
         return True
 
 
-# ----------- Communication class for KUKA IIWA robots -------------
+# ----------- Communication class for EliteRobots CS robots -------------
 class ComRobot:
     """Robot class for programming Elite CS robots"""
 
