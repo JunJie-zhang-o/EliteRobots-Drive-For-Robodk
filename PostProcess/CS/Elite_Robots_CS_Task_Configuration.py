@@ -794,12 +794,6 @@ class RobotPost(object):
         :param pulses_x_deg: Pulses per degree (provided in the robot parameters of RoboDK)
         :type pulses_x_deg: list of int, optional
 
-        Example for a program using the KUKA KRC2 post processor and a KUKA KR 500 3 robot with synchronized linear rail and turn table:
-
-        .. code-block:: python
-
-            RobotPost(r\"\"\"KUKA_KRC2\"\"\",r\"\"\"KUKA KR 500 3\"\"\",9, axes_type=['R','R','R','R','R','R','T','J','J'], native_name=r\"\"\"KUKA KR 500 3\"\"\", ip_com=r\"\"\"192.168.241.127\"\"\", api_port=20500, prog_ptr=2109546424992, robot_ptr=2109347059584, pose_turntable=p(1890.627070,1670.706012,-504.767930,-0.060103,0.046410,-0.246888), pose_rail=p(0.000000,0.000000,0.000000,90.000000,0.000000,0.000000))
-
         """
         self.ROBOT_POST = robotpost
         self.ROBOT_NAME = robotname
