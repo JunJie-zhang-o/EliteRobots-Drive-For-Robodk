@@ -11,6 +11,7 @@
 
 # ----------------------------------------------------
 # This file is a POST PROCESSOR for Robot Offline Programming to generate programs
+# for an Elite Robots robot with RoboDK
 #
 # To edit/test this POST PROCESSOR script file:
 # Select "Program"->"Add/Edit Post Processor", then select your post or create a new one.
@@ -41,11 +42,12 @@
 
 # ----------------------------------------------------
 # Description
-#
+# The Elite Robots CS Task post processor allows you to generate code for CS controllers.
 #
 # Supported Controllers
-#
+# Elite Robots CS
 # ----------------------------------------------------
+
 import xml.etree.ElementTree as ET
 import uuid
 import math
@@ -53,16 +55,15 @@ import re
 import keyword
 import builtins
 
-
 from robodk.robomath import *
 from robodk.robodialogs import *
 from robodk.robofileio import *
 
-max_string_len = 15
+MAX_STRING_LEN = 15
 
 
 def name_add_num(varStr):
-    if len(varStr) < max_string_len - 1:
+    if len(varStr) < MAX_STRING_LEN - 1:
         if "_" in varStr:
             varStrList = varStr.split("_")
             if varStrList[-1].isdecimal():
@@ -72,7 +73,7 @@ def name_add_num(varStr):
                 varStr = varStr + "_1"
         else:
             varStr = varStr + "_1"
-    elif len(varStr) == max_string_len - 1:
+    elif len(varStr) == MAX_STRING_LEN - 1:
         if "_" in varStr:
             varStrList = varStr.split("_")
             if varStrList[-1].isdecimal():
@@ -83,12 +84,12 @@ def name_add_num(varStr):
         else:
             varStr = varStr[:-1] + "_1"
     else:
-        varStr = varStr[:max_string_len]
+        varStr = varStr[:MAX_STRING_LEN]
         if "_" in varStr:
             varStrList = varStr.split("_")
             if varStrList[-1].isdecimal():
                 num = str(int(varStrList[-1]) + 1)
-                varStr = varStr[: -len(num) - 1] + "_" + num
+                varStr = varStr[:-len(num) - 1] + "_" + num
             else:
                 varStr = varStr[:-2] + "_1"
         else:
@@ -96,7 +97,7 @@ def name_add_num(varStr):
     return varStr
 
 
-EliteKeywords = [
+ELITE_KEYWORDS = [
     "def",
     "sec",
     "end",
@@ -311,7 +312,8 @@ EliteKeywords = [
     "servoj",
     "powerdown",
 ]
-EliserverKeywords = [
+
+ELISERVER_KEYWORDS = [
     "xor",
     "end",
     "thread",
@@ -593,7 +595,7 @@ EliserverKeywords = [
     "zero_ftsensor",
 ]
 
-RobodkKeywords = [
+ROBODK_KEYWORDS = [
     "TCP",
     "Home",
     "负载",
@@ -602,10 +604,16 @@ RobodkKeywords = [
     "Ctrl_base_frame",
     "Ctrl_tool_frame",
 ]
-RobotKeywords = ["点", "路点", "计时器", "Waypoint", "Timer"]
-TCPNames = []
-FrameNames = []
-ProgNames = []
+ROBOT_KEYWODS = [
+    "点",
+    "路点",
+    "计时器",
+    "Waypoint",
+    "Timer",
+]
+TCP_NAMES = []
+FRAME_NAMES = []
+PROG_NAMES = []
 
 
 def get_safe_name(varStr: str, type: str = "None") -> str:
@@ -620,7 +628,7 @@ def get_safe_name(varStr: str, type: str = "None") -> str:
     :return: The filtered name
     :rtype: str
     """
-    varStr = re.sub("\W|^(?=\d)", "_", varStr[:max_string_len])
+    varStr = re.sub("\W|^(?=\d)", "_", varStr[:MAX_STRING_LEN])
     if varStr[0] == "_":
         varStr = "N" + varStr
         varStr = get_safe_name(varStr)
@@ -631,40 +639,40 @@ def get_safe_name(varStr: str, type: str = "None") -> str:
     if varStr in dir(builtins):
         varStr = name_add_num(varStr)
         varStr = get_safe_name(varStr)
-    if varStr in EliteKeywords:
+    if varStr in ELITE_KEYWORDS:
         varStr = name_add_num(varStr)
         varStr = get_safe_name(varStr)
-    if varStr in EliserverKeywords:
+    if varStr in ELISERVER_KEYWORDS:
         varStr = name_add_num(varStr)
         varStr = get_safe_name(varStr)
 
-    if varStr in RobodkKeywords:
+    if varStr in ROBODK_KEYWORDS:
         varStr = name_add_num(varStr)
         varStr = get_safe_name(varStr)
-    for RobotKeyword in RobotKeywords:
+    for RobotKeyword in ROBOT_KEYWODS:
         if varStr.startswith(RobotKeyword):
             varStr = "N_" + varStr
             varStr = get_safe_name(varStr)
     if type == "TCP":
-        if varStr in FrameNames:
+        if varStr in FRAME_NAMES:
             varStr = name_add_num(varStr)
             varStr = get_safe_name(varStr, "TCP")
-        if varStr in ProgNames:
+        if varStr in PROG_NAMES:
             varStr = name_add_num(varStr)
             varStr = get_safe_name(varStr, "TCP")
 
     if type == "Frame":
-        if varStr in TCPNames:
+        if varStr in TCP_NAMES:
             varStr = name_add_num(varStr)
             varStr = get_safe_name(varStr, "Frame")
-        if varStr in ProgNames:
+        if varStr in PROG_NAMES:
             varStr = name_add_num(varStr)
             varStr = get_safe_name(varStr, "Frame")
     if type == "Program":
-        if varStr in TCPNames:
+        if varStr in TCP_NAMES:
             varStr = name_add_num(varStr)
             varStr = get_safe_name(varStr, "Program")
-        if varStr in FrameNames:
+        if varStr in FRAME_NAMES:
             varStr = name_add_num(varStr)
             varStr = get_safe_name(varStr, "Program")
 
@@ -706,63 +714,47 @@ def joints_2_list(joints):
 # ----------------------------------------------------
 # Object class that handles the robot instructions/syntax
 class RobotPost(object):
-    """RoboDK Post Processor object.
 
-    As Post processors can be compiled (.pyc), class variables can be exposed to the user for further customization.
-
-    More information on how users can modify variables of a RoboDK Post Processor here:
-
-        - https://robodk.com/doc/en/Post-Processors.html
-        - https://robodk.com/doc/en/Post-Processors.html
-
-    .. code-block:: python
-
-        class RobotPost(object):
-
-
-
-            MY_PUBLIC_VAR = TRUE
-
-
-
-
-
-            MY_PRIVATE_VAR = False
-
-    """
-
-    # Define variables that can be edited by the user below
+    # Public: define variables that can be edited by the user below
     #
     # More information on how users can modify variables of a RoboDK Post Processor here:
     #     https://robodk.com/doc/en/Post-Processors.html#PPEditor
     #     https://robodk.com/doc/en/Post-Processors.html#EditPost
 
-    DEFAULT_TCP = [0, 0, 0, 0, 0, 0]  #: Default TCP [Xmm, Ymm, Zmm, RX°, RY°, RZ°]
-    DEFAULT_SPEED = 250  #: Default linear speed (mm/s)
-    DEFAULT_ACCELERATION = 1200  #: Default linear acceleration (mm/s2)
-    DEFAULT_SPEEDJOINTS = 60  #: Default joint speed (deg/s)
-    DEFAULT_ACCELERATIONJOINTS = 80  #: Default joint acceleration (deg/s2)
-    DEFAULT_ROUNDING = 0  #: Default rounding (mm)
-    MOVEJ_POSITION_TYPE = 0  #: Default 0 (0:JOINT_ANGLES 1:CARTESIAN_POSE)
-    PROGRAM_CALL_MODE = 0  #: Default 0 (0:Folder 1:SubTask)
-    LANGUAGE_SETTING = "zh"  #: Default zh (zh:中文 ja:日本語 en:English)
+    # Default TCP [Xmm, Ymm, Zmm, RX°, RY°, RZ°]
+    DEFAULT_TCP = [0, 0, 0, 0, 0, 0]  
 
-    # --------------------------------------------------------
-    # Define internal variables that cannot be edited by the user below (note the "# ---------..." splitter)
+    # Default speed for linear moves in mm/s
+    DEFAULT_SPEED = 250
 
+    # Default acceleration for linear moves in mm/s^2
+    DEFAULT_ACCELERATION = 1200
+
+    # Default speed for joint moves in deg/s
+    DEFAULT_SPEEDJOINTS = 60
+
+    # Default acceleration for joint moves in deg/s^2
+    DEFAULT_ACCELERATIONJOINTS = 80
+
+    # Default rounding in mm
+    DEFAULT_ROUNDING = 0
+
+    # Position type for MoveJ (0:JOINT_ANGLES 1:CARTESIAN_POSE)
+    MOVEJ_POSITION_TYPE = 0
+
+    # Program call mode (0:Folder 1:SubTask)
+    PROGRAM_CALL_MODE = 0
+
+    # Language (zh:中文 ja:日本語 en:English)
+    LANGUAGE_SETTING = "zh"
+
+    # ----------------------------------------------------
+    # Private: define internal variables that cannot be edited by the user below (note the "# ---------..." splitter)
+
+    # Set the output program extension
     PROG_EXT = "task"
 
-    ROBOT_POST = ""
-    ROBOT_NAME = ""
-    NATIVE_NAME = ""
-
-    PROG = []
-    PROG_FILES = []
-    LOG = ""
-
-    nAxes = 6
-
-    def __init__(self, robotpost="", robotname="", robot_axes=6, **kwargs):
+    def __init__(self, robotpost='', robotname='', robot_axes=6, *args, **kwargs):
         """Create a new post processor.
 
         **Tip**: Avoid using instances of :meth:`robodk.robolink.Robolink` and/or :meth:`robodk.robolink.Item` in the post processor unless absolutely necessary.
@@ -771,7 +763,7 @@ class RobotPost(object):
         :type robotpost: str
         :param robotname: Name of the robot
         :type robotname: str
-        :param robot_axes: Number of axes of the robot
+        :param robot_axes: Number of axes of the robot, including synchronized axes
         :type robot_axes: int
         :param axes_type: Type of each axes of the robot ('R': Robot rotative, 'T': Robot translation, 'J': Ext. axis rotative, 'L': Ext. axis linear)
         :type axes_type: list of str, optional
@@ -795,40 +787,59 @@ class RobotPost(object):
         :type pulses_x_deg: list of int, optional
 
         """
-        self.ROBOT_POST = robotpost
-        self.ROBOT_NAME = robotname
-        self.NATIVE_NAME = robotname
-        self.nAxes = robot_axes
 
-        # Initialize internal non-constant variables
-        self.PROG = []
-        self.PROG_FILES = []
-        self.LOG = ""
-        self.MAX_LINES_X_PROG = 0
+        # Constructor parameters (mandatory)
+        self.ROBOT_POST = robotpost  # Name of the robot post processor (provided by RoboDK in the constructor)
+        self.ROBOT_NAME = robotname  # Name of the robot (provided by RoboDK in the constructor)
+        self.ROBOT_AXES = robot_axes  # Number of axes for the robot, including synchronized axes (provided by RoboDK in the constructor)
 
-        # Optional arguments, you may or may not use those
+        # Optional constructor parameters (added later, backward compatibility)
+        self.AXES_TYPE = None  # Optional, type of each axes of the robot ('R': Robot rotative, 'T': Robot translation, 'J': Ext. axis rotative, 'L': Ext. axis linear) (provided by RoboDK in the constructor)
+        self.NATIVE_NAME = robotname  # Optional, native/original name of the robot (provided by RoboDK in the constructor)
+        self.IP_COM = None  # Optional, IP address of the robot ("Connect" tab in RoboDK) (provided by RoboDK in the constructor)
+        self.API_PORT = None  # Optional, RoboDK API port to the RoboDK instance (provided by RoboDK in the constructor)
+        self.PROG_PTR = None  # Optional, RoboDK Item pointer to the program generated (provided by RoboDK in the constructor)
+        self.ROBOT_PTR = None  # Optional, RoboDK Item pointer to the robot associated with the program generated (provided by RoboDK in the constructor)
+        self.POSE_TURNTABLE = None  #  Optional, offset pose of the synchronized turn table (provided by RoboDK in the constructor)
+        self.POSE_RAIL = None  # Optional, offset pose of the synchronized linear rail (provided by RoboDK in the constructor)
+        self.MAX_LINES_X_PROG = None  # Optional, maximum number of lines per program (to generate multiple files). This setting can be overridden in RoboDK (Tools-Options-Program) (provided by RoboDK in the constructor)
+        self.PULSES_X_DEG = None  # Optional, pulses per degree (provided in the robot parameters of RoboDK) (provided by RoboDK in the constructor)
+
+        # Optional constructor parameters, you may or may not use those
         for k, v in kwargs.items():
-            if k == "axes_type":
+            if k == 'axes_type':
                 self.AXES_TYPE = v
-            elif k == "native_name":
+            elif k == 'native_name':
                 self.NATIVE_NAME = v
-            elif k == "ip_com":
-                self.ROBOT_IP = v
-            elif k == "api_port":
+            elif k == 'ip_com':
+                self.IP_COM = v
+            elif k == 'api_port':
                 self.API_PORT = v
-            elif k == "prog_ptr":
+            elif k == 'prog_ptr':
                 self.PROG_PTR = v
-            elif k == "robot_ptr":
+            elif k == 'robot_ptr':
                 self.ROBOT_PTR = v
-            elif k == "pose_turntable":
+            elif k == 'pose_turntable':
                 self.POSE_TURNTABLE = v
-            elif k == "pose_rail":
+            elif k == 'pose_rail':
                 self.POSE_RAIL = v
-            elif k == "lines_x_prog":
+            elif k == 'lines_x_prog':
                 self.MAX_LINES_X_PROG = v
-            elif k == "pulses_x_deg":
+            elif k == 'pulses_x_deg':
                 self.PULSES_X_DEG = v
 
+        # Optional TEMP parameter (depends on RoboDK settings)
+        self._TargetName = None  # Optional, target name (Tools->Options->Program->Export target names) (provided by RoboDK in the TEMP file)
+        self._TargetNameVia = None  # Optional, intermediary target name (MoveC) (Tools->Options->Program->Export target names) (provided by RoboDK in the TEMP file)
+        self._PoseTrack = None  # Optional, current pose of the synchronized linear axis (Tools->Options->Program->Export external axes poses) (provided by RoboDK in the TEMP file)
+        self._PoseTurntable = None  # Optional, current pose of the synchronized turn table (Tools->Options->Program->Export external axes poses) (provided by RoboDK in the TEMP file)
+
+        # Initialize internal non-constant variables (caps kept for legacy)
+        self.PROG = []  # Current program content (list of str)
+        self.PROG_FILES = []  # Local files generated by the post processor
+        self.LOG = ''  # Current log content (str)
+
+        # Post-specific
         self.DEFAULT_ENABLE = True
         self.lines = 0
         self.programs = {}
@@ -889,18 +900,33 @@ class RobotPost(object):
             },
         }
 
-    def ProgStart(self, progname, new_page=False):
+    def ProgStart(self, progname):
+        """Start a new program given a name. Multiple programs can be generated at the same time.
 
+        **Tip**:
+        ProgStart is triggered every time a new program must be generated.
+
+        :param progname: Name of the program
+        :type progname: str
+        """
         if self.PROGRAM_CALL_MODE == 1:
             self.current_program = get_safe_name(progname, "Program")
-            if ProgNames == []:
-                ProgNames.append(self.current_program)
+            if PROG_NAMES == []:
+                PROG_NAMES.append(self.current_program)
         else:
             self.current_program = progname
 
         self.programs[self.current_program] = []
 
-    def ProgFinish(self, progname, new_page=False):
+    def ProgFinish(self, progname):
+        """This method is executed to define the end of a program or procedure. One module may have more than one program. No other instructions will be executed before another :meth:`samplepost.RobotPost.ProgStart` is executed.
+
+        **Tip**:
+        ProgFinish is triggered after all the instructions of the program.
+
+        :param progname: Name of the program
+        :type progname: str
+        """
         pass
 
     def ProgSave(self, folder, progname, ask_user=False, show_result=False):
@@ -942,12 +968,12 @@ class RobotPost(object):
 
         self.convert_task(filename, progname)
 
-        if self.MAX_LINES_X_PROG != 0:
+        if self.MAX_LINES_X_PROG:
             if self.lines > self.MAX_LINES_X_PROG:
-                self.addlog("You set the maximum number of lines per program")
+                self.addlog("You have set the maximum number of lines per program.")
                 self.addlog("Maximum number of lines:" + str(self.MAX_LINES_X_PROG))
                 self.addlog("Current number of lines:" + str(self.lines))
-                self.addlog("You should split the script into several files")
+                self.addlog("You should split the script into several files.")
 
         with open(filesave, "w", encoding="utf-8") as fid:
             for index, line in enumerate(self.PROG):
@@ -1000,7 +1026,18 @@ class RobotPost(object):
                 os.startfile(filesave)
 
     def ProgSendRobot(self, robot_ip, remote_path, ftp_user, ftp_pass):
-        """Send the progran to the robot"""
+        """Send a program to the robot using the provided parameters. This method is executed right after ProgSave if we selected the option "Send Program to Robot".
+        The connection parameters must be provided in the robot connection menu of RoboDK.
+
+        :param robot_ip: IP address of the robot
+        :type robot_ip: str
+        :param remote_path: Remote path of the robot
+        :type remote_path: str
+        :param ftp_user: FTP user credential
+        :type ftp_user: str
+        :param ftp_pass: FTP user password
+        :type ftp_pass: str
+        """
         if remote_path == "" or remote_path == "/":
             remote_path = "/home/elite/user/program/"
         if remote_path[-1] != "/":
@@ -1013,6 +1050,8 @@ class RobotPost(object):
             ftp_pass = "elibot"
 
         try:
+            from robodk.robolink import import_install
+            import_install('paramiko')
             import paramiko
 
             ssh_client = paramiko.SSHClient()
@@ -1050,9 +1089,7 @@ class RobotPost(object):
             for file in self.PROG_FILES:
 
                 remote_file_path = remote_path + getBaseName(file)
-                if not sftp_download(
-                    robot_ip, ftp_user, ftp_pass, file, remote_file_path
-                ):
+                if not sftp_download(robot_ip, ftp_user, ftp_pass, file, remote_file_path):
                     result = False
             if result:
                 if len(self.PROG_FILES) == 1:
@@ -1062,8 +1099,7 @@ class RobotPost(object):
                     )
                 elif len(self.PROG_FILES) > 1:
                     ShowMessage(
-                        "Done: %i files successfully transferred"
-                        % len(self.PROG_FILES),
+                        "Done: %i files successfully transferred" % len(self.PROG_FILES),
                         "Success",
                     )
             else:
@@ -1084,7 +1120,7 @@ class RobotPost(object):
         :type conf_RLF: int list, None
         """
         if len(joints) != 6:
-            msg = "Current not supports synchronize external axes! Try again after removing sync with external axes."
+            msg = "Current implement does not support synchronized external axes!"
             self.addlog(msg)
             self.RunMessage(msg, True)
             return
@@ -1106,7 +1142,7 @@ class RobotPost(object):
         :type conf_RLF: int list, None
         """
         if len(joints) != 6:
-            msg = "Current not supports synchronize external axes! Try again after removing sync with external axes."
+            msg = "Current implement does not support synchronized external axes!"
             self.addlog(msg)
             self.RunMessage(msg, True)
             return
@@ -1180,7 +1216,7 @@ class RobotPost(object):
                 frame_name = name_add_num(frame_name)
                 frame_name = get_safe_name(frame_name, "Frame")
         except:
-            FrameNames.append(frame_name)
+            FRAME_NAMES.append(frame_name)
         instruction = {"name": "setFrame", "frame_name": frame_name}
         self.programs[self.current_program].append(instruction)
         self.frames[frame_name] = frame_pose
@@ -1205,51 +1241,108 @@ class RobotPost(object):
                 tool_name = name_add_num(tool_name)
                 tool_name = get_safe_name(tool_name, "TCP")
         except:
-            TCPNames.append(tool_name)
+            TCP_NAMES.append(tool_name)
         instruction = {"name": "setTool", "tool_name": tool_name}
         self.programs[self.current_program].append(instruction)
         self.tcps[tool_name] = tool_pose
 
     def Pause(self, time_ms):
-        """Pause the robot program"""
+        """Defines a pause in a program (including movements). time_ms is negative if the pause must provoke the robot to stop until the user desires to continue the program.
+
+        **Tip**:
+        Pause is triggered by the RoboDK instruction Program->Pause Instruction.
+
+        :param time_ms: Time of the pause, in milliseconds
+        :type time_ms: float
+        """
         instruction = {"name": "Pause", "time_ms": time_ms}
         self.programs[self.current_program].append(instruction)
 
     def setSpeed(self, speed_mms):
+        """Changes the robot speed (in mm/s)
 
+        **Tip**:
+        setSpeed is triggered by the RoboDK instruction Program->Set Speed Instruction.
+
+        :param speed_mms: Speed in :math:`mm/s`
+        :type speed_mms: float
+        """
         instruction = {"name": "setSpeed", "speed_mms": speed_mms}
         self.programs[self.current_program].append(instruction)
 
     def setAcceleration(self, accel_mmss):
-        """Changes the robot acceleration (in mm/s2)"""
+        """Changes the robot acceleration (in mm/s^2)
 
+        **Tip**:
+        setAcceleration is triggered by the RoboDK instruction Program->Set Speed Instruction. An acceleration value must be provided.
+
+        :param accel_mmss: Speed in :math:`mm/s^2`
+        :type accel_mmss: float
+        """
         instruction = {"name": "setAcceleration", "accel_mmss": accel_mmss}
         self.programs[self.current_program].append(instruction)
 
     def setSpeedJoints(self, speed_degs):
+        """Changes the robot joint speed (in deg/s)
 
+        **Tip**:
+        setSpeedJoints is triggered by the RoboDK instruction Program->Set Speed Instruction. A joint speed value must be provided.
+
+        :param speed_degs: Speed in :math:`deg/s`
+        :type speed_degs: float
+        """
         instruction = {"name": "setSpeedJoints", "speed_degs": speed_degs}
         self.programs[self.current_program].append(instruction)
 
     def setAccelerationJoints(self, accel_degss):
-        """Changes the robot joint acceleration (in deg/s2)"""
+        """Changes the robot joint acceleration (in deg/s^2)
 
+        **Tip**:
+        setAccelerationJoints is triggered by the RoboDK instruction Program->Set Speed Instruction. A joint acceleration value must be provided.
+
+        :param accel_degss: Speed in :math:`deg/s^2`
+        :type accel_degss: float
+        """
         instruction = {"name": "setAccelerationJoints", "accel_degss": accel_degss}
         self.programs[self.current_program].append(instruction)
 
     def setZoneData(self, zone_mm):
+        """Changes the smoothing radius (also known as rounding, blending radius, CNT, APO or zone data). If this parameter is higher it helps making the movement smoother
 
+        **Tip**:
+        setZoneData is triggered by the RoboDK instruction Program->Set Rounding Instruction.
+
+        :param zone_mm: Rounding radius in mm
+        :type zone_mm: float
+        """
         instruction = {"name": "setZoneData", "zone_mm": zone_mm}
         self.programs[self.current_program].append(instruction)
 
     def setDO(self, io_var, io_value):
-        """Set a Digital Output"""
+        """Sets a variable (usually a digital output) to a given value. This method can also be used to set other variables.
 
+        **Tip**:
+        setDO is triggered by the RoboDK instruction Program->Set or Wait I/O Instruction.
+
+        :param io_var: Variable to set, provided as a str or int
+        :type io_var: int, str
+        :param io_value: Value of the variable, provided as a str, float or int
+        :type io_value: int, float, str
+        """
         instruction = {"name": "setDO", "io_var": io_var, "io_value": io_value}
         self.programs[self.current_program].append(instruction)
 
     def setAO(self, io_var, io_value):
-        """Set an Analog Output"""
+        """Sets a an analog variable to a given value.
+
+        **Tip**:
+        setAO is triggered by the RoboDK instruction Program->Set or Wait I/O Instruction.
+
+        :param io_var: Variable to set, provided as a str or int
+        :type io_var: int, str
+        :param io_value: Value of the variable, provided as a str, float or int
+        :type io_value: int, float, str
+        """
         aIO_id = str(io_var)
         aIO_domain = "-1"
         aIO_value = str(io_value)
@@ -1270,9 +1363,7 @@ class RobotPost(object):
                 current = float(aIO_value[:-2])
             except:
                 self.addlog("Please check the AO Value:")
-                self.addlog(
-                    "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                )
+                self.addlog("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
                 self.addlog("Current AO Value:" + str(io_value))
                 return
             else:
@@ -1289,9 +1380,7 @@ class RobotPost(object):
                 voltage = float(aIO_value[:-1])
             except:
                 self.addlog("Please check the AO Value:")
-                self.addlog(
-                    "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                )
+                self.addlog("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
                 self.addlog("Current AO Value:" + str(io_value))
                 return
             else:
@@ -1312,9 +1401,7 @@ class RobotPost(object):
                     aIO_value = str(aIO_value)
             except:
                 self.addlog("Please check the AO Value:")
-                self.addlog(
-                    "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                )
+                self.addlog("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
                 self.addlog("Current AO Value:" + str(io_value))
                 return
 
@@ -1328,33 +1415,45 @@ class RobotPost(object):
         self.programs[self.current_program].append(instruction)
 
     def waitDI(self, io_var, io_value, timeout_ms=-1):
-        """Waits for an input io_var to attain a given value io_value. Optionally, a timeout can be provided."""
+        """Waits for a variable (usually a digital input) to attain a given value io_value. This method can also be used to set other variables.Optionally, a timeout can be provided.
 
-        instruction = {
-            "name": "waitDI",
-            "io_var": io_var,
-            "io_value": io_value,
-            "timeout_ms": timeout_ms,
-        }
+        **Tip**:
+        waitDI is triggered by the RoboDK instruction Program->Set or Wait I/O Instruction.
+
+        :param io_var: Variable to wait for, provided as a str or int
+        :type io_var: int, str
+        :param io_value: Value of the variable, provided as a str, float or int
+        :type io_value: int, float, str
+        :param timeout_ms: Maximum wait time
+        :type timeout_ms: float, int
+        """
+        instruction = {"name": "waitDI", "io_var": io_var, "io_value": io_value, "timeout_ms": timeout_ms}
         self.programs[self.current_program].append(instruction)
 
     def RunCode(self, code, is_function_call=False):
-        """Adds code or a function call"""
+        """Adds code or a function call.
+
+        **Tip**:
+        RunCode is triggered by the RoboDK instruction Program->Function call Instruction.
+
+        :param code: Code or procedure to call
+        :param is_function_call: True if the provided code is a specific function to call
+        :type code: str
+        :type is_function_call: bool
+        """
         if self.PROGRAM_CALL_MODE == 1:
-            if self.current_program != ProgNames[0]:
-                self.addlog(
-                    "SubTask not support call another subtask, please use folder mode and generate robot program again!"
-                )
+            if self.current_program != PROG_NAMES[0]:
+                self.addlog("SubTask does not support calling another subtask, please use folder mode and generate robot program again.")
                 return
             code = get_safe_name(code, "Program")
             instruction = {
                 "name": "RunCode",
                 "code": code,
                 "is_function_call": is_function_call,
-                "is_first_call": code not in ProgNames,
+                "is_first_call": code not in PROG_NAMES,
             }
-            if code not in ProgNames:
-                ProgNames.append(code)
+            if code not in PROG_NAMES:
+                PROG_NAMES.append(code)
         else:
             instruction = {
                 "name": "RunCode",
@@ -1364,12 +1463,21 @@ class RobotPost(object):
         self.programs[self.current_program].append(instruction)
 
     def RunMessage(self, message, iscomment=False):
-        """Add a comment or a popup message"""
+        """Display a message in the robot controller screen (teach pendant)
 
+        **Tip**:
+        RunMessage is triggered by the RoboDK instruction Program->Show Message Instruction.
+
+        :param message: Message to display on the teach pendant or as a comment on the code
+        :type message: str
+        :param iscomment: True if the message does not have to be displayed on the teach pendant but as a comment on the code
+        :type iscomment: bool
+        """
         instruction = {"name": "RunMessage", "message": message, "iscomment": iscomment}
         self.programs[self.current_program].append(instruction)
 
     # ------------------ private ----------------------
+
     def addline(self, newline):
         """Add a new program line. This is a private method used only by the other methods.
 
@@ -1385,7 +1493,7 @@ class RobotPost(object):
         :param newline: New log line to add
         :type newline: str
         """
-        self.LOG = self.LOG + newline + "\n"
+        self.LOG = self.LOG + newline + '\n'
 
     def convert_program(self, progname):
 
@@ -1396,9 +1504,7 @@ class RobotPost(object):
             current_speed = str(self.DEFAULT_SPEED / 1000)
             current_acceleration = str(self.DEFAULT_ACCELERATION / 1000)
             current_speedjoints = str(math.radians(self.DEFAULT_SPEEDJOINTS))
-            current_accelerationjoints = str(
-                math.radians(self.DEFAULT_ACCELERATIONJOINTS)
-            )
+            current_accelerationjoints = str(math.radians(self.DEFAULT_ACCELERATIONJOINTS))
             current_rounding = self.DEFAULT_ROUNDING / 1000
             current_waypoint = 1
             current_movec = 0
@@ -1410,13 +1516,13 @@ class RobotPost(object):
 <MoveNode movementType="JOINT_MOVEMENT" positionType="JOINT_ANGLES" tcpType="ACTIVE_TCP" typeName="MoveJ">
     <frameReference>Ctrl_base_frame</frameReference>
     <jointSpeed>
-    <valueInSi>1.0471975511965976</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
     <xmlElementName>AngularSpeed</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.AngularSpeedImpl</supportType>
     </jointSpeed>
     <jointAcceleration>
-    <valueInSi>1.3962634015954636</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
     <xmlElementName>AngularAcceleration</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.AngularAccelerationImpl</supportType>
@@ -1429,39 +1535,39 @@ class RobotPost(object):
         <supportType>cn.elibot.robot.plugin.core.domain.value.LengthImpl</supportType>
     </transitionRadius>
     <internalPosition>
-        <jointPositions joints="0.0, -1.5707963705062866, 0.0, -1.5707963705062866, 1.5707963705062866, 0.0"/>
-        <toolPose X="92.00004434917304" Y="-147.49998942204118" Z="1076.499983076011" RX="-1.5707964142176767" RY="3.821371231789832E-15" RZ="-1.5707962830835067"/>
+        <jointPositions joints="0.0, 0.0, 0.0, 0.0, 0.0, 0.0"/>
+        <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
     </internalPosition>
     <fromPosition>
         <jointPositions joints="NaN, NaN, NaN, NaN, NaN, NaN"/>
         <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
     </fromPosition>
     <jointSpeed>
-        <valueInSi>1.0471975511965976</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
         <xmlElementName>AngularSpeed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularSpeedImpl</supportType>
     </jointSpeed>
     <jointAcceleration>
-        <valueInSi>1.3962634015954636</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
         <xmlElementName>AngularAcceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularAccelerationImpl</supportType>
     </jointAcceleration>
     <cartesianSpeed>
-        <valueInSi>0.25</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
         <xmlElementName>Speed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.SpeedImpl</supportType>
     </cartesianSpeed>
     <cartesianAcceleration>
-        <valueInSi>1.2</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
         <xmlElementName>Acceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AccelerationImpl</supportType>
     </cartesianAcceleration>
     <nextMotionTime>
-        <valueInSi>2.0</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Time$Unit">S</siUnit>
         <xmlElementName>Time</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.TimeImpl</supportType>
@@ -1493,53 +1599,27 @@ class RobotPost(object):
                     root.find("frameReference").text = current_frame
 
                 root.find("jointSpeed").find("valueInSi").text = current_speedjoints
-                root.find("jointAcceleration").find(
-                    "valueInSi"
-                ).text = current_accelerationjoints
+                root.find("jointAcceleration").find("valueInSi").text = current_accelerationjoints
                 root.find("WaypointNode").set("name", "路点_" + str(current_waypoint))
                 current_waypoint += 1
                 if current_rounding > 0:
                     root.find("WaypointNode").set("customTransitionRadius", "true")
-                    root.find("WaypointNode").find("transitionRadius").find(
-                        "valueInSi"
-                    ).text = str(current_rounding)
-                root.find("WaypointNode").find("internalPosition").find(
-                    "jointPositions"
-                ).set(
+                    root.find("WaypointNode").find("transitionRadius").find("valueInSi").text = str(current_rounding)
+                root.find("WaypointNode").find("internalPosition").find("jointPositions").set(
                     "joints",
                     ", ".join([str(x) for x in joints_2_list(instruction["joints"])]),
                 )
                 if instruction["pose"] is not None:
-                    root.find("WaypointNode").find("internalPosition").find(
-                        "toolPose"
-                    ).set("X", str(pose_2_list(instruction["pose"])[0]))
-                    root.find("WaypointNode").find("internalPosition").find(
-                        "toolPose"
-                    ).set("Y", str(pose_2_list(instruction["pose"])[1]))
-                    root.find("WaypointNode").find("internalPosition").find(
-                        "toolPose"
-                    ).set("Z", str(pose_2_list(instruction["pose"])[2]))
-                    root.find("WaypointNode").find("internalPosition").find(
-                        "toolPose"
-                    ).set("RX", str(pose_2_list(instruction["pose"])[3]))
-                    root.find("WaypointNode").find("internalPosition").find(
-                        "toolPose"
-                    ).set("RY", str(pose_2_list(instruction["pose"])[4]))
-                    root.find("WaypointNode").find("internalPosition").find(
-                        "toolPose"
-                    ).set("RZ", str(pose_2_list(instruction["pose"])[5]))
-                root.find("WaypointNode").find("jointSpeed").find(
-                    "valueInSi"
-                ).text = current_speedjoints
-                root.find("WaypointNode").find("jointAcceleration").find(
-                    "valueInSi"
-                ).text = current_accelerationjoints
-                root.find("WaypointNode").find("cartesianSpeed").find(
-                    "valueInSi"
-                ).text = current_speed
-                root.find("WaypointNode").find("cartesianAcceleration").find(
-                    "valueInSi"
-                ).text = current_acceleration
+                    root.find("WaypointNode").find("internalPosition").find("toolPose").set("X", str(pose_2_list(instruction["pose"])[0]))
+                    root.find("WaypointNode").find("internalPosition").find("toolPose").set("Y", str(pose_2_list(instruction["pose"])[1]))
+                    root.find("WaypointNode").find("internalPosition").find("toolPose").set("Z", str(pose_2_list(instruction["pose"])[2]))
+                    root.find("WaypointNode").find("internalPosition").find("toolPose").set("RX", str(pose_2_list(instruction["pose"])[3]))
+                    root.find("WaypointNode").find("internalPosition").find("toolPose").set("RY", str(pose_2_list(instruction["pose"])[4]))
+                    root.find("WaypointNode").find("internalPosition").find("toolPose").set("RZ", str(pose_2_list(instruction["pose"])[5]))
+                root.find("WaypointNode").find("jointSpeed").find("valueInSi").text = current_speedjoints
+                root.find("WaypointNode").find("jointAcceleration").find("valueInSi").text = current_accelerationjoints
+                root.find("WaypointNode").find("cartesianSpeed").find("valueInSi").text = current_speed
+                root.find("WaypointNode").find("cartesianAcceleration").find("valueInSi").text = current_acceleration
                 self.task += ET.tostring(root, encoding="UTF-8").decode()
 
             elif instruction["name"] == "MoveL":
@@ -1547,13 +1627,13 @@ class RobotPost(object):
 <MoveNode movementType="LINEAR_MOVEMENT" positionType="CARTESIAN_POSE" tcpType="ACTIVE_TCP" typeName="MoveL">
     <frameReference>Ctrl_base_frame</frameReference>
     <cartesianSpeed>
-    <valueInSi>0.25</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
     <xmlElementName>Speed</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.SpeedImpl</supportType>
     </cartesianSpeed>
     <cartesianAcceleration>
-    <valueInSi>1.2</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
     <xmlElementName>Acceleration</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.AccelerationImpl</supportType>
@@ -1566,39 +1646,39 @@ class RobotPost(object):
         <supportType>cn.elibot.robot.plugin.core.domain.value.LengthImpl</supportType>
     </transitionRadius>
     <internalPosition>
-        <jointPositions joints="0.0, -1.5707963705062866, 0.0, -1.5707963705062866, 1.5707963705062866, 0.0"/>
-        <toolPose X="93.00004430546164" Y="-150.4999893783298" Z="1074.4999829885883" RX="-0.38759674783838294" RY="0.36136705782129974" RZ="-2.4278682525651645"/>
+        <jointPositions joints="0.0, 0.0, 0.0, 0.0, 0.0, 0.0"/>
+        <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
     </internalPosition>
     <fromPosition>
         <jointPositions joints="NaN, NaN, NaN, NaN, NaN, NaN"/>
         <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
     </fromPosition>
     <jointSpeed>
-        <valueInSi>1.0471975511965976</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
         <xmlElementName>AngularSpeed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularSpeedImpl</supportType>
     </jointSpeed>
     <jointAcceleration>
-        <valueInSi>1.3962634015954636</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
         <xmlElementName>AngularAcceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularAccelerationImpl</supportType>
     </jointAcceleration>
     <cartesianSpeed>
-        <valueInSi>0.25</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
         <xmlElementName>Speed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.SpeedImpl</supportType>
     </cartesianSpeed>
     <cartesianAcceleration>
-        <valueInSi>1.2</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
         <xmlElementName>Acceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AccelerationImpl</supportType>
     </cartesianAcceleration>
     <nextMotionTime>
-        <valueInSi>2.0</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Time$Unit">S</siUnit>
         <xmlElementName>Time</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.TimeImpl</supportType>
@@ -1628,52 +1708,26 @@ class RobotPost(object):
                     root.find("frameReference").text = current_frame
 
                 root.find("cartesianSpeed").find("valueInSi").text = current_speed
-                root.find("cartesianAcceleration").find(
-                    "valueInSi"
-                ).text = current_acceleration
+                root.find("cartesianAcceleration").find("valueInSi").text = current_acceleration
                 root.find("WaypointNode").set("name", "路点_" + str(current_waypoint))
                 current_waypoint += 1
                 if current_rounding > 0:
                     root.find("WaypointNode").set("customTransitionRadius", "true")
-                    root.find("WaypointNode").find("transitionRadius").find(
-                        "valueInSi"
-                    ).text = str(current_rounding)
-                root.find("WaypointNode").find("internalPosition").find(
-                    "jointPositions"
-                ).set(
+                    root.find("WaypointNode").find("transitionRadius").find("valueInSi").text = str(current_rounding)
+                root.find("WaypointNode").find("internalPosition").find("jointPositions").set(
                     "joints",
                     ", ".join([str(x) for x in joints_2_list(instruction["joints"])]),
                 )
-                root.find("WaypointNode").find("internalPosition").find("toolPose").set(
-                    "X", str(pose_2_list(instruction["pose"])[0])
-                )
-                root.find("WaypointNode").find("internalPosition").find("toolPose").set(
-                    "Y", str(pose_2_list(instruction["pose"])[1])
-                )
-                root.find("WaypointNode").find("internalPosition").find("toolPose").set(
-                    "Z", str(pose_2_list(instruction["pose"])[2])
-                )
-                root.find("WaypointNode").find("internalPosition").find("toolPose").set(
-                    "RX", str(pose_2_list(instruction["pose"])[3])
-                )
-                root.find("WaypointNode").find("internalPosition").find("toolPose").set(
-                    "RY", str(pose_2_list(instruction["pose"])[4])
-                )
-                root.find("WaypointNode").find("internalPosition").find("toolPose").set(
-                    "RZ", str(pose_2_list(instruction["pose"])[5])
-                )
-                root.find("WaypointNode").find("jointSpeed").find(
-                    "valueInSi"
-                ).text = current_speedjoints
-                root.find("WaypointNode").find("jointAcceleration").find(
-                    "valueInSi"
-                ).text = current_accelerationjoints
-                root.find("WaypointNode").find("cartesianSpeed").find(
-                    "valueInSi"
-                ).text = current_speed
-                root.find("WaypointNode").find("cartesianAcceleration").find(
-                    "valueInSi"
-                ).text = current_acceleration
+                root.find("WaypointNode").find("internalPosition").find("toolPose").set("X", str(pose_2_list(instruction["pose"])[0]))
+                root.find("WaypointNode").find("internalPosition").find("toolPose").set("Y", str(pose_2_list(instruction["pose"])[1]))
+                root.find("WaypointNode").find("internalPosition").find("toolPose").set("Z", str(pose_2_list(instruction["pose"])[2]))
+                root.find("WaypointNode").find("internalPosition").find("toolPose").set("RX", str(pose_2_list(instruction["pose"])[3]))
+                root.find("WaypointNode").find("internalPosition").find("toolPose").set("RY", str(pose_2_list(instruction["pose"])[4]))
+                root.find("WaypointNode").find("internalPosition").find("toolPose").set("RZ", str(pose_2_list(instruction["pose"])[5]))
+                root.find("WaypointNode").find("jointSpeed").find("valueInSi").text = current_speedjoints
+                root.find("WaypointNode").find("jointAcceleration").find("valueInSi").text = current_accelerationjoints
+                root.find("WaypointNode").find("cartesianSpeed").find("valueInSi").text = current_speed
+                root.find("WaypointNode").find("cartesianAcceleration").find("valueInSi").text = current_acceleration
                 self.task += ET.tostring(root, encoding="UTF-8").decode()
 
             elif instruction["name"] == "MoveC":
@@ -1681,19 +1735,19 @@ class RobotPost(object):
 <MoveNode movementType="PROCESS_MOVEMENT" positionType="CARTESIAN_POSE" tcpType="ACTIVE_TCP" typeName="MoveP">
     <frameReference>Ctrl_base_frame</frameReference>
     <cartesianSpeed>
-    <valueInSi>0.25</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
     <xmlElementName>Speed</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.SpeedImpl</supportType>
     </cartesianSpeed>
     <cartesianAcceleration>
-    <valueInSi>1.2</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
     <xmlElementName>Acceleration</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.AccelerationImpl</supportType>
     </cartesianAcceleration>
     <inheritedProcessMoveTransitionRadius>
-    <valueInSi>0.025</valueInSi>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
     <xmlElementName>Length</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.LengthImpl</supportType>
@@ -1702,39 +1756,39 @@ class RobotPost(object):
     <WaypointNode name="经过点" positionNodeType="FIXED_POSITION" kinematicFlag="-1" customTransitionRadius="false" advancedPositionOptionType="INHERITED_PARAMETERS" typeName="路点">
         <transitionRadius reference="../../../inheritedProcessMoveTransitionRadius"/>
         <internalPosition>
-        <jointPositions joints="0.4878447682976299, -1.6778871049300503, -2.0085866809384, -1.025919661125958, 1.5708031040296353, 0.4878505001398193"/>
-        <toolPose X="489.68927316992006" Y="92.86216050191292" Z="292.65080297815695" RX="3.1415855313626815" RY="3.892992942432792E-6" RZ="-1.5708020586660851"/>
+        <jointPositions joints="0.0, 0.0, 0.0, 0.0, 0.0, 0.0"/>
+        <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
         </internalPosition>
         <fromPosition>
         <jointPositions joints="NaN, NaN, NaN, NaN, NaN, NaN"/>
         <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
         </fromPosition>
         <jointSpeed>
-        <valueInSi>1.0471975511965976</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
         <xmlElementName>AngularSpeed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularSpeedImpl</supportType>
         </jointSpeed>
         <jointAcceleration>
-        <valueInSi>1.3962634015954636</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
         <xmlElementName>AngularAcceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularAccelerationImpl</supportType>
         </jointAcceleration>
         <cartesianSpeed>
-        <valueInSi>0.25</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
         <xmlElementName>Speed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.SpeedImpl</supportType>
         </cartesianSpeed>
         <cartesianAcceleration>
-        <valueInSi>1.2</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
         <xmlElementName>Acceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AccelerationImpl</supportType>
         </cartesianAcceleration>
         <nextMotionTime>
-        <valueInSi>2.0</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Time$Unit">S</siUnit>
         <xmlElementName>Time</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.TimeImpl</supportType>
@@ -1760,39 +1814,39 @@ class RobotPost(object):
         <supportType>cn.elibot.robot.plugin.core.domain.value.LengthImpl</supportType>
         </transitionRadius>
         <internalPosition>
-        <jointPositions joints="0.008961039651251878, -1.57517772389714, -1.6162278088401574, -1.5209884982956305, 1.5708031040296353, 0.008962319577177672"/>
-        <toolPose X="489.68814000986947" Y="-143.1170599541338" Z="478.05150783559935" RX="3.1415875424054653" RY="6.731697638312738E-6" RZ="-1.5707976067551406"/>
+        <jointPositions joints="0.0, 0.0, 0.0, 0.0, 0.0, 0.0"/>
+        <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
         </internalPosition>
         <fromPosition>
         <jointPositions joints="NaN, NaN, NaN, NaN, NaN, NaN"/>
         <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
         </fromPosition>
         <jointSpeed>
-        <valueInSi>1.0471975511965976</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
         <xmlElementName>AngularSpeed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularSpeedImpl</supportType>
         </jointSpeed>
         <jointAcceleration>
-        <valueInSi>1.3962634015954636</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
         <xmlElementName>AngularAcceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AngularAccelerationImpl</supportType>
         </jointAcceleration>
         <cartesianSpeed>
-        <valueInSi>0.25</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
         <xmlElementName>Speed</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.SpeedImpl</supportType>
         </cartesianSpeed>
         <cartesianAcceleration>
-        <valueInSi>1.2</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
         <xmlElementName>Acceleration</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.AccelerationImpl</supportType>
         </cartesianAcceleration>
         <nextMotionTime>
-        <valueInSi>2.0</valueInSi>
+        <valueInSi>0.0</valueInSi>
         <siUnit class="cn.elibot.robot.plugin.domain.value.Time$Unit">S</siUnit>
         <xmlElementName>Time</xmlElementName>
         <supportType>cn.elibot.robot.plugin.core.domain.value.TimeImpl</supportType>
@@ -1823,104 +1877,48 @@ class RobotPost(object):
                     root.find("frameReference").text = current_frame
 
                 root.find("cartesianSpeed").find("valueInSi").text = current_speed
-                root.find("cartesianAcceleration").find(
-                    "valueInSi"
-                ).text = current_acceleration
+                root.find("cartesianAcceleration").find("valueInSi").text = current_acceleration
                 if current_rounding < 0.001:
-                    root.find("inheritedProcessMoveTransitionRadius").find(
-                        "valueInSi"
-                    ).text = "0.001"
+                    root.find("inheritedProcessMoveTransitionRadius").find("valueInSi").text = "0.001"
                 else:
-                    root.find("inheritedProcessMoveTransitionRadius").find(
-                        "valueInSi"
-                    ).text = str(current_rounding)
+                    root.find("inheritedProcessMoveTransitionRadius").find("valueInSi").text = str(current_rounding)
                 for waypointnode in root.find("ArcMotion").findall("WaypointNode"):
                     if waypointnode.get("name") == "经过点":
                         if current_movec > 0:
                             waypointnode.set("name", "经过点_" + str(current_movec))
-                        waypointnode.find("internalPosition").find(
-                            "jointPositions"
-                        ).set(
+                        waypointnode.find("internalPosition").find("jointPositions").set(
                             "joints",
-                            ", ".join(
-                                [str(x) for x in joints_2_list(instruction["joints1"])]
-                            ),
+                            ", ".join([str(x) for x in joints_2_list(instruction["joints1"])]),
                         )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "X", str(pose_2_list(instruction["pose1"])[0])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "Y", str(pose_2_list(instruction["pose1"])[1])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "Z", str(pose_2_list(instruction["pose1"])[2])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "RX", str(pose_2_list(instruction["pose1"])[3])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "RY", str(pose_2_list(instruction["pose1"])[4])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "RZ", str(pose_2_list(instruction["pose1"])[5])
-                        )
-                        waypointnode.find("jointSpeed").find(
-                            "valueInSi"
-                        ).text = current_speedjoints
-                        waypointnode.find("jointAcceleration").find(
-                            "valueInSi"
-                        ).text = current_accelerationjoints
-                        waypointnode.find("cartesianSpeed").find(
-                            "valueInSi"
-                        ).text = current_speed
-                        waypointnode.find("cartesianAcceleration").find(
-                            "valueInSi"
-                        ).text = current_acceleration
+                        waypointnode.find("internalPosition").find("toolPose").set("X", str(pose_2_list(instruction["pose1"])[0]))
+                        waypointnode.find("internalPosition").find("toolPose").set("Y", str(pose_2_list(instruction["pose1"])[1]))
+                        waypointnode.find("internalPosition").find("toolPose").set("Z", str(pose_2_list(instruction["pose1"])[2]))
+                        waypointnode.find("internalPosition").find("toolPose").set("RX", str(pose_2_list(instruction["pose1"])[3]))
+                        waypointnode.find("internalPosition").find("toolPose").set("RY", str(pose_2_list(instruction["pose1"])[4]))
+                        waypointnode.find("internalPosition").find("toolPose").set("RZ", str(pose_2_list(instruction["pose1"])[5]))
+                        waypointnode.find("jointSpeed").find("valueInSi").text = current_speedjoints
+                        waypointnode.find("jointAcceleration").find("valueInSi").text = current_accelerationjoints
+                        waypointnode.find("cartesianSpeed").find("valueInSi").text = current_speed
+                        waypointnode.find("cartesianAcceleration").find("valueInSi").text = current_acceleration
                     if waypointnode.get("name") == "终点":
                         if current_movec > 0:
                             waypointnode.set("name", "终点_" + str(current_movec))
                         if current_rounding > 0:
-                            waypointnode.find("transitionRadius").find(
-                                "valueInSi"
-                            ).text = str(current_rounding)
-                        waypointnode.find("internalPosition").find(
-                            "jointPositions"
-                        ).set(
+                            waypointnode.find("transitionRadius").find("valueInSi").text = str(current_rounding)
+                        waypointnode.find("internalPosition").find("jointPositions").set(
                             "joints",
-                            ", ".join(
-                                [str(x) for x in joints_2_list(instruction["joints2"])]
-                            ),
+                            ", ".join([str(x) for x in joints_2_list(instruction["joints2"])]),
                         )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "X", str(pose_2_list(instruction["pose2"])[0])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "Y", str(pose_2_list(instruction["pose2"])[1])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "Z", str(pose_2_list(instruction["pose2"])[2])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "RX", str(pose_2_list(instruction["pose2"])[3])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "RY", str(pose_2_list(instruction["pose2"])[4])
-                        )
-                        waypointnode.find("internalPosition").find("toolPose").set(
-                            "RZ", str(pose_2_list(instruction["pose2"])[5])
-                        )
-                        waypointnode.find("jointSpeed").find(
-                            "valueInSi"
-                        ).text = current_speedjoints
-                        waypointnode.find("jointAcceleration").find(
-                            "valueInSi"
-                        ).text = current_accelerationjoints
-                        waypointnode.find("cartesianSpeed").find(
-                            "valueInSi"
-                        ).text = current_speed
-                        waypointnode.find("cartesianAcceleration").find(
-                            "valueInSi"
-                        ).text = current_acceleration
+                        waypointnode.find("internalPosition").find("toolPose").set("X", str(pose_2_list(instruction["pose2"])[0]))
+                        waypointnode.find("internalPosition").find("toolPose").set("Y", str(pose_2_list(instruction["pose2"])[1]))
+                        waypointnode.find("internalPosition").find("toolPose").set("Z", str(pose_2_list(instruction["pose2"])[2]))
+                        waypointnode.find("internalPosition").find("toolPose").set("RX", str(pose_2_list(instruction["pose2"])[3]))
+                        waypointnode.find("internalPosition").find("toolPose").set("RY", str(pose_2_list(instruction["pose2"])[4]))
+                        waypointnode.find("internalPosition").find("toolPose").set("RZ", str(pose_2_list(instruction["pose2"])[5]))
+                        waypointnode.find("jointSpeed").find("valueInSi").text = current_speedjoints
+                        waypointnode.find("jointAcceleration").find("valueInSi").text = current_accelerationjoints
+                        waypointnode.find("cartesianSpeed").find("valueInSi").text = current_speed
+                        waypointnode.find("cartesianAcceleration").find("valueInSi").text = current_acceleration
                 current_movec += 1
                 self.task += ET.tostring(root, encoding="UTF-8").decode()
 
@@ -1931,21 +1929,25 @@ class RobotPost(object):
                 current_tcp = instruction["tool_name"]
 
             elif instruction["name"] == "Pause":
-                pause = """
+                if instruction['time_ms'] >= 0:
+                    pause = """
 <WaitNode type="WAIT_TIME" typeName="等待">
-  <waitTime>
-    <valueInSi>0.01</valueInSi>
+<waitTime>
+    <valueInSi>0.0</valueInSi>
     <siUnit class="cn.elibot.robot.plugin.domain.value.Time$Unit">S</siUnit>
     <xmlElementName>Time</xmlElementName>
     <supportType>cn.elibot.robot.plugin.core.domain.value.TimeImpl</supportType>
-  </waitTime>
+</waitTime>
 </WaitNode>
-                """
-                root = ET.fromstring(pause)
-                root.find("waitTime").find("valueInSi").text = str(
-                    instruction["time_ms"] / 1000
-                )
-                self.task += ET.tostring(root, encoding="UTF-8").decode()
+                    """
+                    root = ET.fromstring(pause)
+                    root.find("waitTime").find("valueInSi").text = str(instruction["time_ms"] / 1000)
+                    self.task += ET.tostring(root, encoding="UTF-8").decode()
+                else:
+                    pause = """
+<PopupNode dialogType="INFO" contentType="TEXT" message="Pause" blockWhenPopup="false" typeName="弹出窗口"/>
+"""
+                    self.task += pause
 
             elif instruction["name"] == "setSpeed":
                 current_speed = str(instruction["speed_mms"] / 1000)
@@ -1957,9 +1959,7 @@ class RobotPost(object):
                 current_speedjoints = str(math.radians(instruction["speed_degs"]))
 
             elif instruction["name"] == "setAccelerationJoints":
-                current_accelerationjoints = str(
-                    math.radians(instruction["accel_degss"])
-                )
+                current_accelerationjoints = str(math.radians(instruction["accel_degss"]))
 
             elif instruction["name"] == "setZoneData":
                 current_rounding = instruction["zone_mm"] / 1000
@@ -1968,25 +1968,7 @@ class RobotPost(object):
                 dIO_id = str(instruction["io_var"])
                 dIO_value = str(instruction["io_value"])
 
-                index = [
-                    "0",
-                    "1",
-                    "2",
-                    "3",
-                    "4",
-                    "5",
-                    "6",
-                    "7",
-                    "8",
-                    "9",
-                    "10",
-                    "11",
-                    "12",
-                    "13",
-                    "14",
-                    "15",
-                ]
-                if dIO_id not in index:
+                if dIO_id not in [str(i) for i in range(15)]:
                     self.addlog("Please check the DO Name:")
                     self.addlog("The index of the output, integer type data: [0:15]")
                     self.addlog("Current DO Name:" + str(instruction["io_var"]))
@@ -2033,18 +2015,14 @@ class RobotPost(object):
                         current = float(aIO_value[:-2])
                     except:
                         self.addlog("Please check the AO Value:")
-                        self.addlog(
-                            "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                        )
+                        self.addlog("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
                         self.addlog("Current AO Value:" + str(instruction["io_value"]))
                         return
                     else:
                         if current < 4 or current > 20:
                             self.addlog("Please check the AO Value:")
                             self.addlog("current mode (4-20mA)")
-                            self.addlog(
-                                "Current AO Value:" + str(instruction["io_value"])
-                            )
+                            self.addlog("Current AO Value:" + str(instruction["io_value"]))
                             return
                         else:
                             aIO_value = str((current - 4) / 16)
@@ -2054,18 +2032,14 @@ class RobotPost(object):
                         voltage = float(aIO_value[:-1])
                     except:
                         self.addlog("Please check the AO Value:")
-                        self.addlog(
-                            "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                        )
+                        self.addlog("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
                         self.addlog("Current AO Value:" + str(instruction["io_value"]))
                         return
                     else:
                         if voltage < 0 or voltage > 10:
                             self.addlog("Please check the AO Value:")
                             self.addlog("voltage mode (0-10V)")
-                            self.addlog(
-                                "Current AO Value:" + str(instruction["io_value"])
-                            )
+                            self.addlog("Current AO Value:" + str(instruction["io_value"]))
                             return
                         else:
                             aIO_value = str(voltage / 10)
@@ -2079,9 +2053,7 @@ class RobotPost(object):
                             aIO_value = str(aIO_value)
                     except:
                         self.addlog("Please check the AO Value:")
-                        self.addlog(
-                            "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                        )
+                        self.addlog("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
                         self.addlog("Current AO Value:" + str(instruction["io_value"]))
                         return
                 if aIO_domain == "-1":
@@ -2093,9 +2065,7 @@ class RobotPost(object):
 </SetNode>
                     """
                     root = ET.fromstring(setao)
-                    root.find("expressionOutputPinName").text = (
-                        "analog_out[" + str(aIO_id) + "]"
-                    )
+                    root.find("expressionOutputPinName").text = ("analog_out[" + str(aIO_id) + "]")
                     for char in aIO_value:
                         new = ET.Element("ExpressionCharCell", attrib={"char": char})
                         root.find("Expression").append(new)
@@ -2108,13 +2078,7 @@ class RobotPost(object):
 </ScriptNode>
                     """
                     root = ET.fromstring(setao)
-                    for char in (
-                        "set_standard_analog_output_domain("
-                        + str(aIO_id)
-                        + ","
-                        + aIO_domain
-                        + ")"
-                    ):
+                    for char in ("set_standard_analog_output_domain(" + str(aIO_id) + "," + aIO_domain + ")"):
                         new = ET.Element("ExpressionCharCell", attrib={"char": char})
                         root.find("Expression").append(new)
                     self.task += ET.tostring(root, encoding="UTF-8").decode()
@@ -2127,9 +2091,7 @@ class RobotPost(object):
 </SetNode>
                     """
                     root = ET.fromstring(setao)
-                    root.find("expressionOutputPinName").text = (
-                        "analog_out[" + str(aIO_id) + "]"
-                    )
+                    root.find("expressionOutputPinName").text = ("analog_out[" + str(aIO_id) + "]")
                     for char in aIO_value:
                         new = ET.Element("ExpressionCharCell", attrib={"char": char})
                         root.find("Expression").append(new)
@@ -2138,13 +2100,11 @@ class RobotPost(object):
                     setao = """
 <SetNode type="ANALOG_OUTPUT" typeName="设置">
     <analogOutputPinName>analog_out[0]</analogOutputPinName>
-    <analogOutputPinValue>4.0</analogOutputPinValue>
+    <analogOutputPinValue>0.0</analogOutputPinValue>
 </SetNode>
                     """
                     root = ET.fromstring(setao)
-                    root.find("analogOutputPinName").text = (
-                        "analog_out[" + str(aIO_id) + "]"
-                    )
+                    root.find("analogOutputPinName").text = ("analog_out[" + str(aIO_id) + "]")
                     if aIO_domain == "0":
                         root.find("analogOutputPinValue").text = str(current)
                     else:
@@ -2155,25 +2115,7 @@ class RobotPost(object):
                 dIO_id = str(instruction["io_var"])
                 dIO_value = str(instruction["io_value"])
 
-                index = [
-                    "0",
-                    "1",
-                    "2",
-                    "3",
-                    "4",
-                    "5",
-                    "6",
-                    "7",
-                    "8",
-                    "9",
-                    "10",
-                    "11",
-                    "12",
-                    "13",
-                    "14",
-                    "15",
-                ]
-                if dIO_id not in index:
+                if dIO_id not in [str(i) for i in range(15)]:
                     self.addlog("Please check the DI Name:")
                     self.addlog("The index of the input, integer type data: [0:15]")
                     self.addlog("Current DI Name:" + str(instruction["io_var"]))
@@ -2221,18 +2163,27 @@ class RobotPost(object):
                         root.find("Expression").append(new)
                     new = ET.Element(
                         "ExpressionTokenCell",
-                        attrib={"token": " ?= ", "scriptCode": "=="},
+                        attrib={
+                            "token": " ?= ",
+                            "scriptCode": "=="
+                        },
                     )
                     root.find("Expression").append(new)
                     if dIO_value == "HIGH":
                         new = ET.Element(
                             "ExpressionTokenCell",
-                            attrib={"token": " True ", "scriptCode": " True "},
+                            attrib={
+                                "token": " True ",
+                                "scriptCode": " True "
+                            },
                         )
                     elif dIO_value == "LOW":
                         new = ET.Element(
                             "ExpressionTokenCell",
-                            attrib={"token": " False ", "scriptCode": " False "},
+                            attrib={
+                                "token": " False ",
+                                "scriptCode": " False "
+                            },
                         )
                     else:
                         self.addlog("Please check the DI Value:")
@@ -2242,7 +2193,10 @@ class RobotPost(object):
                     root.find("Expression").append(new)
                     new = ET.Element(
                         "ExpressionTokenCell",
-                        attrib={"token": " or ", "scriptCode": " or "},
+                        attrib={
+                            "token": " or ",
+                            "scriptCode": " or "
+                        },
                     )
                     root.find("Expression").append(new)
                     new = ET.Element("ExpressionVariableCell")
@@ -2267,15 +2221,11 @@ class RobotPost(object):
                 if instruction["is_function_call"]:
                     if self.PROGRAM_CALL_MODE == 1:
                         if instruction["is_first_call"]:
-                            runcode = (
-                                '''
+                            runcode = ('''
 <CallSubTaskNode typeName="调用">
-    <subTask name="'''
-                                + instruction["code"]
-                                + """" isHideSubtree="false" isSynchronized="false" isTracking="false" typeName="子任务">
+    <subTask name="''' + instruction["code"] + """" isHideSubtree="false" isSynchronized="false" isTracking="false" typeName="子任务">
     <children>
-                            """
-                            )
+                            """)
                             self.task += runcode
 
                             temp_tcp = current_tcp
@@ -2290,12 +2240,8 @@ class RobotPost(object):
                             current_frame = ""
                             current_speed = str(self.DEFAULT_SPEED / 1000)
                             current_acceleration = str(self.DEFAULT_ACCELERATION / 1000)
-                            current_speedjoints = str(
-                                math.radians(self.DEFAULT_SPEEDJOINTS)
-                            )
-                            current_accelerationjoints = str(
-                                math.radians(self.DEFAULT_ACCELERATIONJOINTS)
-                            )
+                            current_speedjoints = str(math.radians(self.DEFAULT_SPEEDJOINTS))
+                            current_accelerationjoints = str(math.radians(self.DEFAULT_ACCELERATIONJOINTS))
                             current_rounding = self.DEFAULT_ROUNDING / 1000
 
                             try:
@@ -2305,9 +2251,7 @@ class RobotPost(object):
     <PlaceHolder typeName="占位节点"/>
                                 """
                                 self.task += runcode
-                                self.addlog(
-                                    "Program:" + instruction["code"] + " not found."
-                                )
+                                self.addlog("Program:" + instruction["code"] + " not found.")
                                 self.addlog("Please check the program name!")
                             else:
                                 current_tcp = temp_tcp
@@ -2325,31 +2269,23 @@ class RobotPost(object):
                             """
                             self.task += runcode
                         else:
-                            if ProgNames.index(instruction["code"]) == 1:
+                            if PROG_NAMES.index(instruction["code"]) == 1:
                                 runcode = """
 <CallSubTaskNode typeName="调用">
     <subTask reference="../../CallSubTaskNode/subTask"/>
 </CallSubTaskNode>
                                 """
                             else:
-                                runcode = (
-                                    """
+                                runcode = ("""
 <CallSubTaskNode typeName="调用">
-    <subTask reference="../../CallSubTaskNode["""
-                                    + ProgNames.index(instruction["code"])
-                                    + """]/subTask"/>
+    <subTask reference="../../CallSubTaskNode[""" + PROG_NAMES.index(instruction["code"]) + """]/subTask"/>
 </CallSubTaskNode>
-                                """
-                                )
+                                """)
                             self.task += runcode
                     else:
-                        runcode = (
-                            '''
-<FolderNode display="'''
-                            + instruction["code"]
-                            + """" isHideSubtree="false" typeName="文件夹">
-                        """
-                        )
+                        runcode = ('''
+<FolderNode display="''' + instruction["code"] + """" isHideSubtree="false" typeName="文件夹">
+                        """)
                         self.task += runcode
                         try:
                             self.convert_program(instruction["code"])
@@ -2358,9 +2294,7 @@ class RobotPost(object):
 <PlaceHolder typeName="占位节点"/>
                             """
                             self.task += runcode
-                            self.addlog(
-                                "Program:" + instruction["code"] + " not found."
-                            )
+                            self.addlog("Program:" + instruction["code"] + " not found.")
                             self.addlog("Please check the program name!")
                         runcode = """
 </FolderNode>
@@ -2376,9 +2310,7 @@ class RobotPost(object):
                         """
                         root = ET.fromstring(runcode)
                         for char in line:
-                            new = ET.Element(
-                                "ExpressionCharCell", attrib={"char", char}
-                            )
+                            new = ET.Element("ExpressionCharCell", attrib={"char", char})
                             root.find("Expression").append(new)
                         self.task += ET.tostring(root, encoding="UTF-8").decode()
 
@@ -2404,18 +2336,10 @@ class RobotPost(object):
         :param progname: The name of main program
         :type progname: str
         """
-        self.task = (
-            '''
-<EliTask name="'''
-            + filename
-            + '''" installationName="'''
-            + filename
-            + '''" robotType="'''
-            + self.ROBOT_NAME.split(" ")[-1]
-            + """" typeName="机器人主任务">
+        self.task = ('''
+<EliTask name="''' + filename + '''" installationName="''' + filename + '''" robotType="''' + self.ROBOT_NAME.split(" ")[-1] + """" typeName="机器人主任务">
   <MainTask isTaskAlwaysLoops="true" hasBeforeStart="false" hasInitVariables="false" typeName="机器人主任务">
-        """
-        )
+        """)
 
         self.convert_program(progname)
 
@@ -2424,19 +2348,15 @@ class RobotPost(object):
         """
 
         if self.PROGRAM_CALL_MODE == 1:
-            for i in range(1, len(ProgNames)):
+            for i in range(1, len(PROG_NAMES)):
                 if i == 1:
                     self.task += """
   <SubTaskNode reference="../MainTask/CallSubTaskNode/subTask"/>
                     """
                 else:
-                    self.task += (
-                        """
-  <SubTaskNode reference="../MainTask/CallSubTaskNode["""
-                        + str(i)
-                        + """]/subTask"/>
-                    """
-                    )
+                    self.task += ("""
+  <SubTaskNode reference="../MainTask/CallSubTaskNode[""" + str(i) + """]/subTask"/>
+                    """)
 
         self.task += """
 </EliTask>
@@ -2451,9 +2371,7 @@ class RobotPost(object):
                             "name",
                             node.get("name").replace(
                                 "路点",
-                                self.language_dict[self.LANGUAGE_SETTING][
-                                    "WaypointNode"
-                                ],
+                                self.language_dict[self.LANGUAGE_SETTING]["WaypointNode"],
                             ),
                         )
                         node.set(
@@ -2474,13 +2392,9 @@ class RobotPost(object):
                         if node.get("action") == "RESET":
                             node.find("variable").set(
                                 "name",
-                                node.find("variable")
-                                .get("name")
-                                .replace(
+                                node.find("variable").get("name").replace(
                                     "计时器",
-                                    self.language_dict[self.LANGUAGE_SETTING][
-                                        "TimerNode"
-                                    ],
+                                    self.language_dict[self.LANGUAGE_SETTING]["TimerNode"],
                                 ),
                             )
 
@@ -2491,9 +2405,9 @@ class RobotPost(object):
     def convert_configuration(self):
         """Convert tcps and frames to configuration. This is a private method used only by the other methods."""
         configuration = """
-<ConfigurationSettings robotType="6206" savedTime="2024-02-19 14:29:50">
-  <ToolsManager Active="21b4d8ff-5458-42e7-ae90-d80529e1d6da">
-    <TcpTool name="TCP" uuid="21b4d8ff-5458-42e7-ae90-d80529e1d6da">
+<ConfigurationSettings robotType="6206" savedTime="0000-00-00 00:00:00">
+  <ToolsManager Active="00a0a0aa-0000-00a0-aa00-a00000a0a0aa">
+    <TcpTool name="TCP" uuid="00a0a0aa-0000-00a0-aa00-a00000a0a0aa">
       <ToolShape value="0.0, 0.0, 0.0, 0.0, 0.0, 0.0"/>
     </TcpTool>
   </ToolsManager>
@@ -2521,15 +2435,11 @@ class RobotPost(object):
             f"{self.DEFAULT_TCP[0]}, {self.DEFAULT_TCP[1]}, {self.DEFAULT_TCP[2]}, {math.radians(self.DEFAULT_TCP[3])}, {math.radians(self.DEFAULT_TCP[4])}, {math.radians(self.DEFAULT_TCP[5])}",
         )
         for tool_name, tool_pose in self.tcps.items():
-            new = ET.Element(
-                "TcpTool", attrib={"name": tool_name, "uuid": str(uuid.uuid1())}
-            )
-            new.append(
-                ET.Element(
-                    "ToolShape",
-                    attrib={"value": ", ".join([str(x) for x in tool_pose])},
-                )
-            )
+            new = ET.Element("TcpTool", attrib={"name": tool_name, "uuid": str(uuid.uuid1())})
+            new.append(ET.Element(
+                "ToolShape",
+                attrib={"value": ", ".join([str(x) for x in tool_pose])},
+            ))
             root.find("ToolsManager").append(new)
 
         for frame_name, frame_pose in self.frames.items():
@@ -2542,12 +2452,10 @@ class RobotPost(object):
                     "uuid": str(uuid.uuid1()),
                 },
             )
-            new.append(
-                ET.Element(
-                    "Transform",
-                    attrib={"value": ", ".join([str(x) for x in frame_pose])},
-                )
-            )
+            new.append(ET.Element(
+                "Transform",
+                attrib={"value": ", ".join([str(x) for x in frame_pose])},
+            ))
             root.find("FramesManager").append(new)
 
         if self.analogOutputDomain[0] != "-1" or self.analogOutputDomain[1] != "-1":
@@ -2573,444 +2481,283 @@ def test_post():
 
     from robodk.robomath import PosePP as p
 
-    r = RobotPost(
-        r"""SamplePost""",
-        r"""RoboDK Industrial""",
-        6,
-        axes_type=["R", "R", "R", "R", "R", "R"],
-        native_name=r"""""",
-        ip_com=r"""127.0.0.1""",
-        api_port=20500,
-        prog_ptr=2465610763008,
-        robot_ptr=2465605812256,
-    )
+    r = RobotPost(r"""SamplePost""", r"""RoboDK Industrial""", 6, axes_type=['R', 'R', 'R', 'R', 'R', 'R'], native_name=r"""""", ip_com=r"""127.0.0.1""", api_port=20500, prog_ptr=2465610763008, robot_ptr=2465605812256)
+
     r.ProgStart(r"""MAIN_1""")
     r.RunMessage(r"""Program generated by RoboDK using a custom post processor""", True)
     r.RunMessage(r"""Using nominal kinematics.""", True)
+    r._TargetName = r"""Home"""
+    r.MoveJ(None, [-5.25645e-07, 0, 0, 0, 0, -1.46549e-15], None)
+    r._TargetName = r"""Target Init 1"""
+    r.MoveJ(p(1015, 0, 1372, 0, 90, 0), [0, 3.21124, -15.4237, 0, 12.2125, -4.67269e-13], [0, 0, 0])
+    r._TargetName = r"""Target Init 2"""
+    r.MoveL(p(1015, 0, 1272, 0, 90, 0), [0, 8.55347, -17.0267, 0, -14.3758, 0], [0, 0, 1])
     r.setDO(5, 1)
-    r.setAO(1, 1)
-
+    r.setDO(5, 2)
+    r.setDO(5, '0.5')
+    r.setDO(5, 'true')
+    r.setAO(5, 1)
+    r.setAO(5, 2)
+    r.setAO(5, '0.5')
+    r.setAO(5, 'true')
+    r.setDO('var', 'val')
+    r.setAO('var', 'val')
+    r.waitDI(5, 1, -1)
+    r.waitDI(5, 2, -1)
+    r.waitDI(5, '0.5', -1)
+    r.waitDI(5, 'true', -1)
     r.waitDI(5, 1, 100)
-
+    r.waitDI('var', 'val', -1)
+    r.waitDI('var', 'val', 100)
     r.RunMessage(r"""Message""")
-
+    r.RunCode(r"""REMOTE_PROG_CALL_171""", True)
+    r.RunCode(r"""CODE_INSERT_172""")
     r.RunMessage(r"""Insert Comment""", True)
-    r.setFrame(p(19.013, -4.003, 0, 0, 0, 0), -1, r"""Frame Pick and Place""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
+    r.setFrame(p(719.013, -664.003, 0, 0, 0, 0), -1, r"""Frame Pick and Place""")
+    r.setTool(p(129.073, 0, 85.477, 0, 22.849, 0), 1, r"""Tool 1""")
     r.setAccelerationJoints(800.000)
     r.setSpeedJoints(500.000)
     r.setZoneData(10.000)
-    r.MoveJ(
-        p(187.264, 125.487, 305.356, 180, 0.184, -180),
-        [29.3322, 46.677, 0.024523, 26.5456, 25.3957, 51.634],
-        [0, 0, 0],
-    )
+    r._TargetName = None
+    r.MoveJ(p(187.264, 125.487, 305.356, 180, 0.184, -180), [-29.3322, 46.677, -0.024523, 26.5456, 25.3957, -51.634], [0, 0, 0])
     r.setZoneData(-1.000)
     r.setAcceleration(200.000)
     r.setSpeed(100.000)
-    r.MoveL(
-        p(-187.786, -125.499, -139.112, -179.997, 0.18, 179.996),
-        [29.3185, 56.1632, 0.458104, 38.9815, 17.7354, 64.9585],
-        [0, 0, 0],
-    )
+    r._TargetName = None
+    r.MoveL(p(187.786, 125.499, 139.112, -179.997, 0.18, 179.996), [-29.3185, 56.1632, -0.458104, 38.9815, 17.7354, -64.9585], [0, 0, 0])
     r.setDO(5, 1)
-
+    r.RunCode(r"""PICK_PART_111""", True)
     r.setZoneData(10.000)
     r.setAcceleration(600.000)
     r.setSpeed(300.000)
-
-    r.MoveL(
-        p(-187.272, -447.522, -305.347, 179.999, 0.185, -179.998),
-        [-12.7285, 39.1891, 14.3365, 19.7398, 14.7824, -30.877],
-        [0, 0, 0],
-    )
+    r._TargetName = r"""App_Pick_Jnt"""
+    r.MoveL(None, [-29.3322, 46.677, -0.0244862, 26.5458, 25.3957, -51.6342], None)
+    r._TargetName = None
+    r.MoveL(p(187.272, 447.522, 305.347, 179.999, 0.185, -179.998), [-12.7285, 39.1891, 14.3365, 19.7398, 14.7824, -30.877], [0, 0, 0])
     r.setZoneData(-1.000)
     r.setAcceleration(200.000)
     r.setSpeed(100.000)
-    r.MoveL(
-        p(-187.851, -447.517, -126.235, 179.999, 0.185, -179.998),
-        [-12.7213, 50.7452, 13.7281, 58.8071, 5.77865, -70.4133],
-        [0, 0, 0],
-    )
+    r._TargetName = None
+    r.RunMessage(r"""MoveSearch command not implemented""", True)
+    r.MoveL(p(187.851, 447.517, 126.235, 179.999, 0.185, -179.998), [-12.7213, 50.7452, 13.7281, 58.8071, 5.77865, -70.4133], [0, 0, 0])
     r.setDO(5, 0)
-
+    r.RunCode(r"""PLACE_PART_112""", True)
     r.setZoneData(10.000)
-    r.MoveL(
-        p(-187.272, -447.522, -305.347, 179.999, 0.185, -179.998),
-        [-12.7285, 39.1891, 14.3365, 19.7398, 14.7824, -30.877],
-        [0, 0, 0],
-    )
-    r.setFrame(p(7.67, 2.25, 0, 38.9595, 0, 0), -1, r"""Frame Circular""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
+    r._TargetName = None
+    r.MoveL(p(187.272, 447.522, 305.347, 179.999, 0.185, -179.998), [-12.7285, 39.1891, 14.3365, 19.7398, 14.7824, -30.877], [0, 0, 0])
+    r.setFrame(p(577.67, 392.25, 0, 38.9595, 0, 0), -1, r"""Frame Circular""")
     r.setZoneData(25.000)
     r.setAccelerationJoints(800.000)
     r.setSpeedJoints(500.000)
     r.setAcceleration(200.000)
     r.setSpeed(100.000)
-    r.MoveJ(
-        p(312.208, 292.214, 255.156, -134.549, 11.1813, 178.913),
-        [52.186, 45.6758, 6.92, 66.7342, 19.9323, -92.73],
-        [0, 0, 0],
-    )
-    r.MoveC(
-        p(-30.047, -343.774, -331.503, -134.549, 11.1813, 178.913),
-        [38.5084, 52.8105, -4.82239, 56.4521, 29.7882, -93.0255],
-        p(-39.688, -353.222, -361.073, -134.549, 11.1813, 178.913),
-        [24.802, 41.3257, 29.6032, 87.9704, 29.4626, -142.416],
-        [0, 0, 0],
-        [0, 0, 0],
-    )
-
+    r._TargetName = None
+    r.MoveJ(p(312.208, 292.214, 255.156, -134.549, 11.1813, 178.913), [52.186, 45.6758, 6.92, 66.7342, 19.9323, -92.73], [0, 0, 0])
+    r._TargetNameVia = None
+    r._TargetName = None
+    r.MoveC(p(430.047, 43.774, 231.503, -134.549, 11.1813, 178.913), [38.5084, 52.8105, -4.82239, 56.4521, 29.7882, -93.0255], p(109.688, -153.222, 161.073, -134.549, 11.1813, 178.913), [24.802, 41.3257, 29.6032, 87.9704, 29.4626, -142.416], [0, 0, 0], [0, 0, 0])
+    r._TargetNameVia = r"""Target 2 Jnt"""
+    r._TargetName = r"""Target 1 Jnt"""
+    r.MoveC(None, [38.5084, 52.8104, -4.82235, 56.4523, 29.7882, -93.0257], None, [52.1859, 45.6757, 6.92004, 66.7344, 19.9323, -92.7303], [0, 0, 0], [0, 0, 0])
     r.setZoneData(-1.000)
     r.setAcceleration(200.000)
     r.setSpeed(100.000)
-    r.MoveL(
-        p(72.208, -150, -180.156, -134.549, 11.1813, 178.913),
-        [52.186, 45.6758, 6.92, 66.7342, 19.9323, -92.73],
-        [0, 0, 0],
-    )
-
-    r.setFrame(p(0, 2.714, 7.61, 0, 0, 0), -1, r"""Frame Inspection""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
-    r.MoveJ(
-        p(19.898, 201.357, 302.721, -94.9281, -5.42599, -179.533),
-        [88.676, 29.6016, -6.42883, -1.98422, 49.4792, 4.54769],
-        [0, 0, 0],
-    )
-    r.setFrame(p(0, 2.714, 7.61, 0, 0, 0), -1, r"""Frame Inspection""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
-    r.MoveL(
-        p(-119.898, -174.307, -119.008, -94.9281, -5.42599, -179.533),
-        [88.6412, 37.6157, 7.6344, -3.25372, 27.4219, 6.11377],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-178.402, -174.416, -118.997, -94.9281, -5.42599, -179.533),
-        [69.5908, 42.46, -1.04795, 7.90648, 31.8952, -21.7004],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-180.996, -112.363, -134.882, -95.2937, -18.1364, -178.348),
-        [69.0981, 41.4527, 1.28767, -0.293386, 42.3038, -15.9791],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-116.551, -114.359, -134.226, -95.2937, -18.1364, -178.348),
-        [88.801, 36.7217, 9.82069, -2.95529, 38.8939, 5.74175],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-126.434, -154.524, -146.072, -95.4608, 4.34825, 179.585),
-        [87.9395, 25.3303, 24.2482, -5.09867, 13.2949, 8.14809],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-185.448, -148.05, -145.137, -95.5904, 11.1809, 178.913),
-        [65.1172, 28.8227, 18.4513, 48.4598, 15.6087, -63.1988],
-        [0, 0, 0],
-    )
-    r.setFrame(p(0, 2.714, 7.61, 0, 0, 0), -1, r"""Frame Inspection""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
-    r.MoveL(
-        p(-185.448, -100.625, -195.251, -95.5904, 11.1809, 178.913),
-        [63.7612, 15.3737, 13.1682, 23.9712, 31.7352, -37.6981],
-        [0, 0, 0],
-    )
-
+    r._TargetName = None
+    r.MoveL(p(312.208, 292.214, 255.156, -134.549, 11.1813, 178.913), [52.186, 45.6758, 6.92, 66.7342, 19.9323, -92.73], [0, 0, 0])
+    r._TargetName = r"""Home"""
+    r.MoveJ(None, [-5.25645e-07, 0, 0, 0, 0, -1.46549e-15], None)
+    r.setFrame(p(0, 782.714, 377.61, 0, 0, 0), -1, r"""Frame Inspection""")
+    r._TargetName = None
+    r.MoveJ(p(19.898, 201.357, 302.721, -94.9281, -5.42599, -179.533), [88.676, 29.6016, -6.42883, -1.98422, 49.4792, 4.54769], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(19.898, 174.307, 19.008, -94.9281, -5.42599, -179.533), [88.6412, 37.6157, 7.6344, -3.25372, 27.4219, 6.11377], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(378.402, 174.416, 18.997, -94.9281, -5.42599, -179.533), [69.5908, 42.46, -1.04795, 7.90648, 31.8952, -21.7004], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(380.996, 112.363, 34.882, -95.2937, -18.1364, -178.348), [69.0981, 41.4527, 1.28767, -0.293386, 42.3038, -15.9791], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(16.551, 114.359, 34.226, -95.2937, -18.1364, -178.348), [88.801, 36.7217, 9.82069, -2.95529, 38.8939, 5.74175], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(26.434, 54.524, 46.072, -95.4608, 4.34825, 179.585), [87.9395, 25.3303, 24.2482, -5.09867, 13.2949, 8.14809], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(385.448, 48.05, 45.137, -95.5904, 11.1809, 178.913), [65.1172, 28.8227, 18.4513, 48.4598, 15.6087, -63.1988], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(385.448, -1.625, 295.251, -95.5904, 11.1809, 178.913), [63.7612, 15.3737, 13.1682, 23.9712, 31.7352, -37.6981], [0, 0, 0])
+    r._TargetName = r"""Home"""
+    r.MoveJ(None, [-5.25645e-07, 0, 0, 0, 0, -1.46549e-15], None)
+    r.RunCode(r"""EVENT_PROG_START_101""", True)
     r.setZoneData(1.000)
     r.setSpeed(1000.000)
-    r.setFrame(p(13.637, 40.08, 0, -9, 0, 0), -1, r"""Frame Inspection""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
+    r.setFrame(p(13.637, -840.08, 0, -90, 0, 0), -1, r"""Frame Inspection""")
     r.RunMessage(r"""Show Tool 1""", True)
-    r.MoveJ(
-        p(-49.939, 252.644, 419.997, -90, 0.353, -179.975),
-        [-68.0903, 24.2019, 26.7855, 38.2134, 36.2017, -98.7964],
-        [0, 0, 0],
-    )
-
-    r.MoveL(
-        p(-149.895, 53.259, -119.999, -90, 0.353, -179.975),
-        [-68.0531, 30.5428, 28.4999, 46.5342, 30.2163, -108.684],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-200, 50, -170, -90, 0.353, -179.975),
-        [-69.4372, 36.478, 24.0662, 48.0716, 29.7098, -111.839],
-        [0, 0, 0],
-    )
-
+    r._TargetName = None
+    r.MoveJ(p(-49.939, 252.644, 419.997, -90, 0.353, -179.975), [-68.0903, 24.2019, 26.7855, 38.2134, 36.2017, -98.7964], [0, 0, 0])
+    r._TargetName = None
+    r.RunCode(r"""EVENT_PATH_APPROACH_102""", True)
+    r._TargetName = None
+    r.MoveL(p(-49.895, 253.259, 319.999, -90, 0.353, -179.975), [-68.0531, 30.5428, 28.4999, 46.5342, 30.2163, -108.684], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(0, 250, 270, -90, 0.353, -179.975), [-69.4372, 36.478, 24.0662, 48.0716, 29.7098, -111.839], [0, 0, 0])
+    r.RunCode(r"""EVENT_PATH_START_103""", True)
+    r._TargetName = None
     r.setSpeed(50.000)
-    r.MoveL(
-        p(-235.579, -147.455, -70, -90, 0.345, -179.925),
-        [-70.3489, 38.2711, 20.535, 45.6808, 31.1886, -109.993],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-270.433, -139.873, -70, -89.999, 0.330998, -179.876),
-        [-71.4686, 39.9889, 17.146, 43.5315, 32.7489, -108.597],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-203.854, -127.408, -70, -89.999, 0.309997, -179.831),
-        [-72.7633, 41.6047, 13.9532, 41.6289, 34.3488, -107.63],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.16, -110.313, -70, -89.999, 0.282996, -179.788),
-        [-74.2041, 43.0922, 11.0104, 39.9679, 35.9473, -107.066],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-263.715, -188.937, -70, -89.999, 0.249996, -179.75),
-        [-75.7653, 44.4258, 8.36962, 38.5347, 37.5045, -106.874],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-288.937, -163.715, -70, -89.999, 0.211995, -179.717),
-        [-77.4239, 45.581, 6.08058, 37.3112, 38.9832, -107.02],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-210.313, -135.16, -70, -89.999, 0.169995, -179.689),
-        [-79.1593, 46.5348, 4.19016, 36.281, 40.3478, -107.477],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-227.408, -103.854, -70, -89.999, 0.123994, -179.668),
-        [-80.9524, 47.2671, 2.73896, 35.4254, 41.5679, -108.213],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-239.873, -170.433, -70, -90, 0.075, -179.654),
-        [-82.7857, 47.7617, 1.76039, 34.7286, 42.6165, -109.203],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-247.455, -135.579, -70, -90, 0.025, -179.647),
-        [-84.6423, 48.0069, 1.27773, 34.1759, 43.4729, -110.421],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-250, -100, -70, -90, -0.025, -179.647),
-        [-86.5062, 47.9966, 1.30332, 33.7555, 44.1209, -111.841],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-147.455, -135.579, -70, -90, -0.075, -179.654),
-        [-88.3612, 47.7315, 1.83611, 33.4564, 44.5527, -113.438],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-139.873, -170.433, -70, -90.001, -0.123994, -179.668),
-        [-90.1913, 47.2177, 2.86315, 33.2711, 44.7653, -115.187],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-227.408, -103.854, -70, -90.001, -0.169995, -179.689),
-        [-91.9795, 46.4674, 4.35991, 33.1942, 44.7621, -117.062],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-210.313, -135.16, -70, -90.001, -0.211995, -179.717),
-        [-93.7081, 45.4974, 6.29208, 33.2231, 44.5515, -119.037],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-188.937, -163.715, -70, -90.001, -0.249996, -179.75),
-        [-95.358, 44.3279, 8.61845, 33.3584, 44.1445, -121.088],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-163.715, -188.937, -70, -90.001, -0.282996, -179.788),
-        [-96.9084, 42.9821, 11.2918, 33.6038, 43.5568, -123.189],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.16, -210.313, -70, -90.001, -0.310997, -179.83),
-        [-98.3359, 41.4847, 14.2621, 33.9667, 42.805, -125.317],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-203.854, -227.408, -70, -90.001, -0.331998, -179.876),
-        [-99.6145, 39.8611, 17.4769, 34.4583, 41.9071, -127.446],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-170.433, -239.873, -70, -90, -0.346, -179.925),
-        [-100.715, 38.1376, 20.8827, 35.0938, 40.8826, -129.555],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.579, -247.455, -70, -90, -0.353, -179.975),
-        [-101.604, 36.341, 24.425, 35.8921, 39.7503, -131.622],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-200, -250, 270, -90, -0.353, -179.975),
-        [-102.247, 34.4892, 28.0665, 36.9342, 38.491, -133.695],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-200, -250, 270, -90, -0.353, 179.975),
-        [-102.245, 34.4987, 28.0477, 36.877, 38.5317, -133.625],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.579, -247.455, -70, -90, -0.346, 179.925),
-        [-102.596, 32.6395, 31.6928, 38.0753, 37.2477, -135.543],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-170.433, -239.873, -70, -89.999, -0.330998, 179.876),
-        [-102.611, 30.7935, 35.299, 39.5163, 35.9209, -137.353],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-203.854, -227.408, -70, -89.999, -0.309997, 179.831),
-        [-102.244, 28.9935, 38.801, 41.2289, 34.5749, -139.031],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.16, -210.313, -70, -89.999, -0.282996, 179.788),
-        [-101.448, 27.2756, 42.1281, 43.2369, 33.234, -140.549],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-163.715, -188.937, -70, -89.999, -0.249996, 179.75),
-        [-100.183, 25.6792, 45.2042, 45.554, 31.924, -141.876],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-188.937, -163.715, -70, -89.999, -0.211995, 179.717),
-        [-98.4224, 24.2473, 47.9477, 48.1695, 30.6693, -142.971],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-210.313, -135.16, -70, -89.999, -0.168995, 179.69),
-        [-96.1665, 23.0258, 50.2743, 51.0388, 29.4927, -143.783],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-227.408, -103.854, -70, -89.999, -0.122994, 179.669),
-        [-93.4513, 22.0607, 52.1014, 54.0696, 28.4134, -144.254],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-239.873, -170.433, -70, -90, -0.075, 179.654),
-        [-90.3597, 21.3939, 53.3553, 57.1156, 27.4453, -144.315],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-247.455, -135.579, -70, -90, -0.025, 179.647),
-        [-87.0219, 21.0579, 53.9806, 59.9848, 26.5968, -143.904],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-250, -100, -70, -90, 0.025, 179.647),
-        [-83.6036, 21.0703, 53.9474, 62.4559, 25.8733, -142.962],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-247.455, -135.579, -70, -90, 0.075, 179.655),
-        [-80.2832, 21.4306, 53.2574, 64.3165, 25.2806, -141.457],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-239.873, -170.433, -70, -90.001, 0.122994, 179.669),
-        [-77.224, 22.12, 51.9432, 65.4009, 24.829, -139.389],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-227.408, -103.854, -70, -90.001, 0.169995, 179.689),
-        [-74.5516, 23.1051, 50.0624, 65.6191, 24.5358, -136.794],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-210.313, -135.16, -70, -90.001, 0.211995, 179.717),
-        [-72.344, 24.3435, 47.6903, 64.973, 24.4221, -133.759],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-188.937, -163.715, -70, -90.001, 0.249996, 179.75),
-        [-70.6334, 25.7892, 44.9098, 63.5472, 24.5124, -130.402],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-163.715, -188.937, -70, -90.001, 0.282996, 179.788),
-        [-69.4163, 27.3965, 41.8051, 61.4929, 24.8267, -126.877],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.16, -110.313, -70, -90.001, 0.309997, 179.831),
-        [-68.6649, 29.1225, 38.4571, 58.9975, 25.3753, -123.345],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-203.854, -127.408, -70, -90.001, 0.331998, 179.876),
-        [-68.338, 30.9278, 34.9417, 56.2542, 26.1575, -119.965],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-170.433, -139.873, -70, -90, 0.346, 179.925),
-        [-68.3888, 32.7769, 31.3288, 53.4349, 27.1586, -116.864],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-235.579, -147.455, -70, -90, 0.353, 179.975),
-        [-68.7701, 34.6371, 27.6833, 50.6754, 28.3536, -114.137],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-200, -150, -70, -90, 0.353, 179.975),
-        [-69.4415, 36.4872, 24.0478, 48.0255, 29.7609, -111.78],
-        [0, 0, 0],
-    )
+    r._TargetName = None
+    r.MoveL(p(35.579, 247.455, 270, -90, 0.345, -179.925), [-70.3489, 38.2711, 20.535, 45.6808, 31.1886, -109.993], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(70.433, 239.873, 270, -89.999, 0.330998, -179.876), [-71.4686, 39.9889, 17.146, 43.5315, 32.7489, -108.597], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(103.854, 227.408, 270, -89.999, 0.309997, -179.831), [-72.7633, 41.6047, 13.9532, 41.6289, 34.3488, -107.63], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(135.16, 210.313, 270, -89.999, 0.282996, -179.788), [-74.2041, 43.0922, 11.0104, 39.9679, 35.9473, -107.066], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(163.715, 188.937, 270, -89.999, 0.249996, -179.75), [-75.7653, 44.4258, 8.36962, 38.5347, 37.5045, -106.874], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(188.937, 163.715, 270, -89.999, 0.211995, -179.717), [-77.4239, 45.581, 6.08058, 37.3112, 38.9832, -107.02], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(210.313, 135.16, 270, -89.999, 0.169995, -179.689), [-79.1593, 46.5348, 4.19016, 36.281, 40.3478, -107.477], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(227.408, 103.854, 270, -89.999, 0.123994, -179.668), [-80.9524, 47.2671, 2.73896, 35.4254, 41.5679, -108.213], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(239.873, 70.433, 270, -90, 0.075, -179.654), [-82.7857, 47.7617, 1.76039, 34.7286, 42.6165, -109.203], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(247.455, 35.579, 270, -90, 0.025, -179.647), [-84.6423, 48.0069, 1.27773, 34.1759, 43.4729, -110.421], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(250, 0, 270, -90, -0.025, -179.647), [-86.5062, 47.9966, 1.30332, 33.7555, 44.1209, -111.841], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(247.455, -35.579, 270, -90, -0.075, -179.654), [-88.3612, 47.7315, 1.83611, 33.4564, 44.5527, -113.438], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(239.873, -70.433, 270, -90.001, -0.123994, -179.668), [-90.1913, 47.2177, 2.86315, 33.2711, 44.7653, -115.187], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(227.408, -103.854, 270, -90.001, -0.169995, -179.689), [-91.9795, 46.4674, 4.35991, 33.1942, 44.7621, -117.062], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(210.313, -135.16, 270, -90.001, -0.211995, -179.717), [-93.7081, 45.4974, 6.29208, 33.2231, 44.5515, -119.037], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(188.937, -163.715, 270, -90.001, -0.249996, -179.75), [-95.358, 44.3279, 8.61845, 33.3584, 44.1445, -121.088], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(163.715, -188.937, 270, -90.001, -0.282996, -179.788), [-96.9084, 42.9821, 11.2918, 33.6038, 43.5568, -123.189], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(135.16, -210.313, 270, -90.001, -0.310997, -179.83), [-98.3359, 41.4847, 14.2621, 33.9667, 42.805, -125.317], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(103.854, -227.408, 270, -90.001, -0.331998, -179.876), [-99.6145, 39.8611, 17.4769, 34.4583, 41.9071, -127.446], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(70.433, -239.873, 270, -90, -0.346, -179.925), [-100.715, 38.1376, 20.8827, 35.0938, 40.8826, -129.555], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(35.579, -247.455, 270, -90, -0.353, -179.975), [-101.604, 36.341, 24.425, 35.8921, 39.7503, -131.622], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(0, -250, 270, -90, -0.353, -179.975), [-102.247, 34.4892, 28.0665, 36.9342, 38.491, -133.695], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(0, -250, 270, -90, -0.353, 179.975), [-102.245, 34.4987, 28.0477, 36.877, 38.5317, -133.625], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-35.579, -247.455, 270, -90, -0.346, 179.925), [-102.596, 32.6395, 31.6928, 38.0753, 37.2477, -135.543], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-70.433, -239.873, 270, -89.999, -0.330998, 179.876), [-102.611, 30.7935, 35.299, 39.5163, 35.9209, -137.353], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-103.854, -227.408, 270, -89.999, -0.309997, 179.831), [-102.244, 28.9935, 38.801, 41.2289, 34.5749, -139.031], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-135.16, -210.313, 270, -89.999, -0.282996, 179.788), [-101.448, 27.2756, 42.1281, 43.2369, 33.234, -140.549], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-163.715, -188.937, 270, -89.999, -0.249996, 179.75), [-100.183, 25.6792, 45.2042, 45.554, 31.924, -141.876], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-188.937, -163.715, 270, -89.999, -0.211995, 179.717), [-98.4224, 24.2473, 47.9477, 48.1695, 30.6693, -142.971], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-210.313, -135.16, 270, -89.999, -0.168995, 179.69), [-96.1665, 23.0258, 50.2743, 51.0388, 29.4927, -143.783], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-227.408, -103.854, 270, -89.999, -0.122994, 179.669), [-93.4513, 22.0607, 52.1014, 54.0696, 28.4134, -144.254], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-239.873, -70.433, 270, -90, -0.075, 179.654), [-90.3597, 21.3939, 53.3553, 57.1156, 27.4453, -144.315], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-247.455, -35.579, 270, -90, -0.025, 179.647), [-87.0219, 21.0579, 53.9806, 59.9848, 26.5968, -143.904], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-250, 0, 270, -90, 0.025, 179.647), [-83.6036, 21.0703, 53.9474, 62.4559, 25.8733, -142.962], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-247.455, 35.579, 270, -90, 0.075, 179.655), [-80.2832, 21.4306, 53.2574, 64.3165, 25.2806, -141.457], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-239.873, 70.433, 270, -90.001, 0.122994, 179.669), [-77.224, 22.12, 51.9432, 65.4009, 24.829, -139.389], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-227.408, 103.854, 270, -90.001, 0.169995, 179.689), [-74.5516, 23.1051, 50.0624, 65.6191, 24.5358, -136.794], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-210.313, 135.16, 270, -90.001, 0.211995, 179.717), [-72.344, 24.3435, 47.6903, 64.973, 24.4221, -133.759], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-188.937, 163.715, 270, -90.001, 0.249996, 179.75), [-70.6334, 25.7892, 44.9098, 63.5472, 24.5124, -130.402], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-163.715, 188.937, 270, -90.001, 0.282996, 179.788), [-69.4163, 27.3965, 41.8051, 61.4929, 24.8267, -126.877], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-135.16, 210.313, 270, -90.001, 0.309997, 179.831), [-68.6649, 29.1225, 38.4571, 58.9975, 25.3753, -123.345], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-103.854, 227.408, 270, -90.001, 0.331998, 179.876), [-68.338, 30.9278, 34.9417, 56.2542, 26.1575, -119.965], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-70.433, 239.873, 270, -90, 0.346, 179.925), [-68.3888, 32.7769, 31.3288, 53.4349, 27.1586, -116.864], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(-35.579, 247.455, 270, -90, 0.353, 179.975), [-68.7701, 34.6371, 27.6833, 50.6754, 28.3536, -114.137], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(0, 250, 270, -90, 0.353, 179.975), [-69.4415, 36.4872, 24.0478, 48.0255, 29.7609, -111.78], [0, 0, 0])
     r.setSpeed(1000.000)
-
-    r.MoveL(
-        p(-149.895, -153.258, -19.999, -90, 0.353, 179.975),
-        [-70.3186, 36.0547, 18.426, 41.04, 34.416, -104.418],
-        [0, 0, 0],
-    )
-    r.MoveL(
-        p(-149.939, -152.642, -19.997, -90, 0.353, 179.975),
-        [-70.3547, 30.4247, 16.7719, 35.1262, 40.174, -97.0327],
-        [0, 0, 0],
-    )
-
-    r.setFrame(p(19.013, -4.003, 0, 0, 0, 0), -1, r"""Frame Pick and Place""")
-    r.setTool(p(29.073, 0, 5.477, 0, 22.849, 0), 1, r"""Tool 1""")
-    r.MoveJ(
-        p(187.264, 125.487, 305.356, 180, 0.184, -180),
-        [-29.3322, 46.677, -0.024523, 26.5456, 25.3957, -51.634],
-        [0, 0, 0],
-    )
+    r.RunCode(r"""EVENT_PATH_FINISH_105""", True)
+    r._TargetName = None
+    r._TargetName = None
+    r.MoveL(p(49.895, 253.258, 319.999, -90, 0.353, 179.975), [-70.3186, 36.0547, 18.426, 41.04, 34.416, -104.418], [0, 0, 0])
+    r._TargetName = None
+    r.MoveL(p(49.939, 252.642, 419.997, -90, 0.353, 179.975), [-70.3547, 30.4247, 16.7719, 35.1262, 40.174, -97.0327], [0, 0, 0])
+    r.RunCode(r"""EVENT_PATH_RETRACT_106""", True)
+    r.RunCode(r"""EVENT_PROG_FINISH_107""", True)
+    r.setFrame(p(719.013, -664.003, 0, 0, 0, 0), -1, r"""Frame Pick and Place""")
+    r._TargetName = None
+    r.MoveJ(p(187.264, 125.487, 305.356, 180, 0.184, -180), [-29.3322, 46.677, -0.024523, 26.5456, 25.3957, -51.634], [0, 0, 0])
     r.Pause(1250.0)
-    r.MoveL(
-        p(-187.786, -125.499, -139.112, -179.997, 0.18, 179.996),
-        [-29.3185, 56.1632, -0.458104, 38.9815, 17.7354, -64.9585],
-        [0, 0, 0],
-    )
-
-    r.MoveL(
-        p(-187.264, -125.487, 5.356, 180, 0.184, -180),
-        [-29.3322, 46.677, -0.024523, 26.5456, 25.3957, -51.634],
-        [0, 0, 0],
-    )
-    r.RunCode(r"""PROG_1""", True)
+    r._TargetName = None
+    r.MoveL(p(187.786, 125.499, 139.112, -179.997, 0.18, 179.996), [-29.3185, 56.1632, -0.458104, 38.9815, 17.7354, -64.9585], [0, 0, 0])
+    r.waitDI(1, 1, -1)
+    r._TargetName = None
+    r.MoveL(p(187.264, 125.487, 305.356, 180, 0.184, -180), [-29.3322, 46.677, -0.024523, 26.5456, 25.3957, -51.634], [0, 0, 0])
+    r.RunCode(r"""PROG 1 _.-[]/\;,><&*:%=+@!#^|?^ with a very long name and special characters""", True)
+    r.RunCode(r"""ProgSync""", True)
     r.ProgFinish(r"""MAIN_1""")
-    r.ProgStart(r"""PROG_1""")
+    r.ProgStart(r"""PROG 1 _.-[]/\;,><&*:%=+@!#^|?^ with a very long name and special characters""")
     r.RunMessage(r"""This is a subprogram call to PROG_1""", True)
-    r.ProgFinish(r"""PROG_1""")
-    r.ProgSave(".", r"""MAIN_1""", True, True)
+    r.setFrame(p(0, 1000, 0, 0, 0, 0), 1, r"""Frame 1 _.-[]/\;,><&*:%=+@!#^|?^ with a very long name and special characters""")
+    r.setTool(p(0, 0, 200, 0, 0, 0), 1, r"""Tool 1 _.-[]/\;,><&*:%=+@!#^|?^ with a very long name and s""")
+    r._TargetName = r"""Target 1 _.-[]/\;,><&*:%=+@!#^|?^ with a very long name and special characters"""
+    r.MoveJ(p(1015, -1000, 1237, -5.25645e-07, 90, 0), [-5.25645e-07, 0, 0, 0, 0, -3.50835e-15], [0, 0, 0])
+    r.ProgFinish(r"""PROG 1 _.-[]/\;,><&*:%=+@!#^|?^ with a very long name and special characters""")
+    r.ProgStart(r"""ProgSync""")
+    r.setFrame(p(0, 0, -900, -180, 0, 0), -1, r"""ABB IRBP A250 D1000 Base""")
+    r.setTool(p(0, 0, 200, 0, 0, 0), 3, r"""Tool 3""")
+    r._TargetName = r"""Target Ext 1"""
+    r._PoseTrack = p(530.000000, 0.000000, 408.000000, 0.000000, 0.000000, 0.000000)
+    r._PoseTurntable = p(0.000000, 0.000000, 900.000000, 180.000000, 0.000000, -0.000000)
+    r.MoveJ(None, [0, 0, 0, 0, 0, 0, 0, 0, 0], None)
+    r._TargetName = r"""Target Ext 2"""
+    r._PoseTrack = p(2516.890000, 0.000000, 408.000000, 0.000000, 0.000000, 0.000000)
+    r._PoseTurntable = p(0.000000, -67.103148, 920.515491, -55.373835, -29.031918, -18.526568)
+    r.MoveJ(None, [-9.98, 27.51, 15.86, 26.08, -36.71, -26.4, 1986.89, 34, 119.79], None)
+    r._TargetName = r"""Target Ext 3"""
+    r._PoseTrack = p(2516.890000, 0.000000, 408.000000, 0.000000, 0.000000, 0.000000)
+    r._PoseTurntable = p(0.000000, -67.103148, 920.515491, -55.373835, -29.031918, -18.526568)
+    r.MoveJ(p(-45.0933, 52.3752, 1053.33, 104.025, 78.1296, -141.161), [-15.1078, 25.9289, 17.2052, 17.9009, -35.0913, -20.6442, 1986.89, 34, 119.79], [0, 0, 1])
+    r._TargetName = r"""Target Ext 2"""
+    r._PoseTrack = p(2516.890000, 0.000000, 408.000000, 0.000000, 0.000000, 0.000000)
+    r._PoseTurntable = p(0.000000, -67.103148, 920.515491, -55.373835, -29.031918, -18.526568)
+    r.MoveL(None, [-9.98, 27.51, 15.86, 26.08, -36.71, -26.4, 1986.89, 34, 119.79], None)
+    r._TargetName = r"""Target Ext 3"""
+    r._PoseTrack = p(2516.890000, 0.000000, 408.000000, 0.000000, 0.000000, 0.000000)
+    r._PoseTurntable = p(0.000000, -67.103148, 920.515491, -55.373835, -29.031918, -18.526568)
+    r.MoveL(p(-45.0933, 52.3752, 1053.33, 104.025, 78.1296, -141.161), [-15.1078, 25.9289, 17.2052, 17.9009, -35.0913, -20.6442, 1986.89, 34, 119.79], [0, 0, 1])
+    r.ProgFinish(r"""ProgSync""")
+    #r.ProgSave(".", r"""MAIN_1""", False, False)
 
+    r.convert_task("", r"""MAIN_1""")
+    for line in r.PROG:
+        print(line)
+
+    r.PROG = []
+    r.convert_configuration()
     for line in r.PROG:
         print(line)
 
     if len(r.LOG) > 0:
-        mbox("Program generation LOG:\n\n" + r.LOG)
+        mbox('Program generation LOG:\n\n' + r.LOG)
 
-    input("Press Enter to close...")
+    #input("Press Enter to close...")
 
 
 if __name__ == "__main__":
