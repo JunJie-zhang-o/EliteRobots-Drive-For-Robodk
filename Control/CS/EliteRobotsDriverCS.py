@@ -1,5 +1,5 @@
 # -*- coding: UTF-8 -*-
-# Copyright 2015-2022 - RoboDK Inc. - https://robodk.com/
+# Copyright 2015-2024 - RoboDK Inc. - https://robodk.com/
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -55,21 +55,15 @@
 #  Response:   JNTS: 10 20 30 40 50 60 70
 #
 # ---------------------------------------------------------------------------------
-from ast import While
-from inspect import isclass
-from ipaddress import ip_interface
-import ipaddress
 import socket
 import struct
 import sys
-import re
-import json
+import threading
 import time
 import select
 import math
 
 from io import BytesIO
-
 
 tcp_pose = [0, 0, 0, 0, 0, 0]
 speed_values = [-1, -1, -1, -1]
@@ -79,7 +73,7 @@ rounding_value = -1
 nDOFs_MIN = 6
 
 # Set the driver version
-DRIVER_VERSION = "RoboDK Driver for Elite Robot v2.0.0"
+DRIVER_VERSION = "RoboDK Driver for Elite Robots CS v2.0.0"
 
 # ---------------------------------------------------------------------------------
 
@@ -129,6 +123,7 @@ ROBOT_STATE_TYPE = 16
 
 
 class RobotDataConfig:
+
     def __init__(self):
         self.name = [
             "total_message_len",
@@ -379,6 +374,7 @@ class RobotHeader:
 
 
 class RobotData:
+
     @staticmethod
     def unpack(buf, config):
         data = RobotData()
@@ -390,6 +386,7 @@ class RobotData:
 
 
 class ReadAlarm:
+
     @staticmethod
     def unpack(buf):
         data_length = struct.unpack(">i", buf[0:4])[0]
@@ -402,7 +399,7 @@ class ReadAlarm:
             script_line = struct.unpack(">i", data[15:19])[0]
             script_column = struct.unpack(">i", data[19:23])[0]
 
-            b = bytearray(data[23 : data_length - 1])
+            b = bytearray(data[23:data_length - 1])
             msg = b.decode()
             print_message("Error line:" + str(script_line))
             print_message("Error column:" + str(script_column))
@@ -418,14 +415,7 @@ class ReadAlarm:
             if dtype == 6:
 
                 joint = struct.unpack(">i", data[31:35])[0]
-                print_message(
-                    "Error: E"
-                    + str(error_code)
-                    + "S"
-                    + str(sub_error_code)
-                    + ":J"
-                    + str(joint)
-                )
+                print_message("Error: E" + str(error_code) + "S" + str(sub_error_code) + ":J" + str(joint))
                 ROBOT.CS_getjoints()
 
         return True
@@ -461,6 +451,7 @@ class ComRobot:
     def connect(self, ip, port=30001):
         global ROBOT_MOVING
         global IPAdd
+        global HostIP
 
         self.disconnect()
         print_message("Connecting to robot %s:%i" % (ip, port))
@@ -477,15 +468,11 @@ class ComRobot:
             self.CONNECTED = False
             ROBOT_MOVING = False
             print_message("Connect Failed")
-
-            sys.stdout.flush()
             return False
         else:
             if ROBOT_DOF > nDOFs_MIN:
                 print_message("ERROR: Current not supports synchronize external axes!")
-                print_message(
-                    "ERROR: Try again after removing sync with external axes!"
-                )
+                print_message("ERROR: Try again after removing sync with external axes!")
             else:
                 UpdateStatus(ROBOTCOM_READY)
 
@@ -520,10 +507,10 @@ class ComRobot:
                 if head.type != ROBOT_STATE_TYPE:
                     if head.type == 20:
                         ReadAlarm.unpack(self.__buf)
-                    self.__buf = self.__buf[head.size :]
+                    self.__buf = self.__buf[head.size:]
                     continue
                 data = RobotData.unpack(self.__buf, self.__data_config)
-                self.__buf = self.__buf[head.size :]
+                self.__buf = self.__buf[head.size:]
                 return data
             else:
                 break
@@ -573,9 +560,7 @@ class ComRobot:
                         __status = False
 
                 for num in range(len(tcp_pose) - 3, len(tcp_pose)):
-                    if not is_angle_close(
-                        tcp_offset[num], tcp_pose[num], angle_abs_tol=0.1
-                    ):
+                    if not is_angle_close(tcp_offset[num], tcp_pose[num], angle_abs_tol=0.1):
                         __status = False
 
                 if __status == False:
@@ -612,9 +597,7 @@ class ComRobot:
                         __status = False
 
                 for num in range(len(tcp_pose) - 3, len(tcp_pose)):
-                    if not is_angle_close(
-                        tcp_offset[num], tcp_pose[num], angle_abs_tol=0.1
-                    ):
+                    if not is_angle_close(tcp_offset[num], tcp_pose[num], angle_abs_tol=0.1):
                         __status = False
 
                 if __status == False:
@@ -637,9 +620,7 @@ class ComRobot:
                 if len(bin(data.digital_output_bits)) - 2 < int(dIO_id) + 1:
                     continue
                 else:
-                    if bin(data.digital_output_bits)[-int(dIO_id) - 1] == str(
-                        dIO_value
-                    ):
+                    if bin(data.digital_output_bits)[-int(dIO_id) - 1] == str(dIO_value):
                         return True
 
             time.sleep(0.1)
@@ -659,9 +640,9 @@ class ComRobot:
 
                         if data.standard_analog_output_domain0 == aIO_domain:
                             if math.isclose(
-                                data.standard_analog_output_value0,
+                                    data.standard_analog_output_value0,
                                 (aIO_value * 16 + 4) / 1000,
-                                abs_tol=0.1,
+                                    abs_tol=0.1,
                             ):
 
                                 return True
@@ -669,25 +650,25 @@ class ComRobot:
 
                         if data.standard_analog_output_domain0 == aIO_domain:
                             if math.isclose(
-                                data.standard_analog_output_value0,
-                                aIO_value * 10,
-                                abs_tol=0.1,
+                                    data.standard_analog_output_value0,
+                                    aIO_value * 10,
+                                    abs_tol=0.1,
                             ):
                                 return True
                     elif aIO_domain == -1:
 
                         if data.standard_analog_output_domain0 == 0:
                             if math.isclose(
-                                data.standard_analog_output_value0,
+                                    data.standard_analog_output_value0,
                                 (aIO_value * 16 + 4) / 1000,
-                                abs_tol=0.1,
+                                    abs_tol=0.1,
                             ):
                                 return True
                         elif data.standard_analog_output_domain0 == 1:
                             if math.isclose(
-                                data.standard_analog_output_value0,
-                                aIO_value * 10,
-                                abs_tol=0.1,
+                                    data.standard_analog_output_value0,
+                                    aIO_value * 10,
+                                    abs_tol=0.1,
                             ):
                                 return True
 
@@ -696,34 +677,34 @@ class ComRobot:
 
                         if data.standard_analog_output_domain1 == aIO_domain:
                             if math.isclose(
-                                data.standard_analog_output_value1,
+                                    data.standard_analog_output_value1,
                                 (aIO_value * 16 + 4) / 1000,
-                                abs_tol=0.1,
+                                    abs_tol=0.1,
                             ):
                                 return True
                     elif aIO_domain == 1:
 
                         if data.standard_analog_output_domain1 == aIO_domain:
                             if math.isclose(
-                                data.standard_analog_output_value1,
-                                aIO_value * 10,
-                                abs_tol=0.1,
+                                    data.standard_analog_output_value1,
+                                    aIO_value * 10,
+                                    abs_tol=0.1,
                             ):
                                 return True
                     elif aIO_domain == -1:
 
                         if data.standard_analog_output_domain1 == 0:
                             if math.isclose(
-                                data.standard_analog_output_value1,
+                                    data.standard_analog_output_value1,
                                 (aIO_value * 16 + 4) / 1000,
-                                abs_tol=0.1,
+                                    abs_tol=0.1,
                             ):
                                 return True
                         elif data.standard_analog_output_domain1 == 1:
                             if math.isclose(
-                                data.standard_analog_output_value1,
-                                aIO_value * 10,
-                                abs_tol=0.1,
+                                    data.standard_analog_output_value1,
+                                    aIO_value * 10,
+                                    abs_tol=0.1,
                             ):
                                 return True
 
@@ -896,15 +877,11 @@ class ComRobot:
 
                         robot_mode = data.get_robot_mode
                         if robot_mode == 7:
-
                             ROBOT.SendCmd(out_script)
-
                         else:
                             print_message("Error, please check the robot status.")
                             if robot_mode == 3:
-                                print_message(
-                                    "Please turn on the power and release brakes first!"
-                                )
+                                print_message("Please turn on the power and release brakes first!")
                             elif robot_mode == 5:
                                 print_message("Please release brakes first!")
                             return False
@@ -934,17 +911,11 @@ class ComRobot:
                         ]
 
                         for num in range(len(after_tcp) - 3):
-
-                            if not math.isclose(
-                                after_tcp[num], before_tcp[num], abs_tol=0.1
-                            ):
+                            if not math.isclose(after_tcp[num], before_tcp[num], abs_tol=0.1):
                                 return True
 
                         for num in range(len(after_tcp) - 3):
-
-                            if not math.isclose(
-                                after_tcp[num], out_pose[num], abs_tol=new_abs
-                            ):
+                            if not math.isclose(after_tcp[num], out_pose[num], abs_tol=new_abs):
                                 __status = False
                                 if not data.is_program_paused:
                                     ROBOT.SendCmd(out_script)
@@ -955,6 +926,23 @@ class ComRobot:
                 else:
                     ROBOT_MOVING = True
             time.sleep(0.1)
+
+    def SendPopup(self, outscript):
+            ROBOT.SendCmd(outscript)
+
+            new = ComRobot()
+            new.newconnect(IPAdd)
+
+            while True:
+                data = new.get_data()
+                if data == None:
+                    continue
+                else:
+                    if not data.is_program_running:
+                        if not data.is_program_paused:
+                                return True
+
+                time.sleep(0.1)
 
     def send_array(self, values):
         """Sends an array of doubles"""
@@ -1103,9 +1091,7 @@ def TestDriver():
     RunCommand("SETTOOL -0.025 -41.046 50.920 60.000 -0.000 90.000")
     RunCommand("CJNT")
     RunCommand("MOVJ -5.362010 46.323420 20.746290 74.878840 -50.101680 61.958500")
-    RunCommand(
-        "MOVEL 0 0 0 0 0 0 -5.362010 50.323420 20.746290 74.878840 -50.101680 61.958500"
-    )
+    RunCommand("MOVEL 0 0 0 0 0 0 -5.362010 50.323420 20.746290 74.878840 -50.101680 61.958500")
     RunCommand("PAUSE 1000")
     RunCommand("DISCONNECT")
 
@@ -1201,9 +1187,7 @@ def RunCommand(cmd_line):
                 if ROBOT.SendMOV(out_script, out_pose):
                     UpdateStatus(ROBOTCOM_READY)
             else:
-                print_message(
-                    "TCP in RoboDK is different from Robot, please check the TCP setting first"
-                )
+                print_message("TCP in RoboDK is different from Robot, please check the TCP setting first")
 
         except:
             UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
@@ -1240,9 +1224,7 @@ def RunCommand(cmd_line):
                 if ROBOT.SendMOV(out_script, out_pose):
                     UpdateStatus(ROBOTCOM_READY)
             else:
-                print_message(
-                    "TCP in RoboDK is different from Robot, please check the TCP setting first"
-                )
+                print_message("TCP in RoboDK is different from Robot, please check the TCP setting first")
 
         except:
             UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
@@ -1279,9 +1261,7 @@ def RunCommand(cmd_line):
                 if ROBOT.SendMOV(out_script, out_pose):
                     UpdateStatus(ROBOTCOM_READY)
             else:
-                print_message(
-                    "TCP in RoboDK is different from Robot, please check the TCP setting first"
-                )
+                print_message("TCP in RoboDK is different from Robot, please check the TCP setting first")
 
         except:
             UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
@@ -1324,9 +1304,7 @@ def RunCommand(cmd_line):
                 if ROBOT.SendMOV(out_script, pose_to):
                     UpdateStatus(ROBOTCOM_READY)
             else:
-                print_message(
-                    "TCP in RoboDK is different from Robot, please check the TCP setting first"
-                )
+                print_message("TCP in RoboDK is different from Robot, please check the TCP setting first")
 
         except:
             UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
@@ -1382,8 +1360,18 @@ def RunCommand(cmd_line):
         pausetime = cmd_values[0] / 1000
         if pausetime >= 0:
             time.sleep(cmd_values[0] / 1000)
+            UpdateStatus(ROBOTCOM_READY)
+        else:
+            out_script = "def pcscript():\n"
+            out_script = (out_script + "  popup(s='Pause',title='Message From RoboDK',blocking=True)\n")
+            out_script = out_script + "end\n"
 
-        UpdateStatus(ROBOTCOM_READY)
+            try:
+                ROBOT.SendPopup(out_script)
+            except:
+                UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+            else:
+                UpdateStatus(ROBOTCOM_READY)
 
     elif n_cmd_values >= 1 and cmd_line.startswith("SETROUNDING"):
 
@@ -1397,40 +1385,16 @@ def RunCommand(cmd_line):
         dIO_id = -1
         dIO_value = -1
 
-        index = [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9",
-            "10",
-            "11",
-            "12",
-            "13",
-            "14",
-            "15",
-        ]
-        if cmd_words[3] not in index:
+        if cmd_words[3] not in [str(i) for i in range(16)]:
             print_message("Please check the IO Name:")
             print_message("The index of the output, integer type data: [0:15]")
 
         else:
             dIO_id = cmd_words[3]
 
-        if (
-            cmd_words[4].replace("\n", "").replace("\r", "") == "1"
-            or cmd_words[4].replace("\n", "").replace("\r", "") == "True"
-        ):
+        if (cmd_words[4].replace("\n", "").replace("\r", "") == "1" or cmd_words[4].replace("\n", "").replace("\r", "") == "True"):
             dIO_value = 1
-        elif (
-            cmd_words[4].replace("\n", "").replace("\r", "") == "0"
-            or cmd_words[4].replace("\n", "").replace("\r", "") == "False"
-        ):
+        elif (cmd_words[4].replace("\n", "").replace("\r", "") == "0" or cmd_words[4].replace("\n", "").replace("\r", "") == "False"):
             dIO_value = 0
         else:
             print_message("Please check the IO Value:")
@@ -1440,14 +1404,7 @@ def RunCommand(cmd_line):
         if dIO_id != -1 and dIO_value != -1:
             out_script = "sec pcscript():\n"
 
-            out_script = (
-                out_script
-                + "  set_standard_digital_out("
-                + dIO_id
-                + ","
-                + str(bool(dIO_value))
-                + ")\n"
-            )
+            out_script = (out_script + "  set_standard_digital_out(" + dIO_id + "," + str(bool(dIO_value)) + ")\n")
             out_script = out_script + "end\n"
 
             try:
@@ -1481,9 +1438,7 @@ def RunCommand(cmd_line):
                 current = float(cmd_words[4].replace("\n", "").replace("\r", "")[:-2])
             except:
                 print_message("Please check the IO Value:")
-                print_message(
-                    "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                )
+                print_message("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
 
             else:
                 if current < 4 or current > 20:
@@ -1498,9 +1453,7 @@ def RunCommand(cmd_line):
                 voltage = float(cmd_words[4].replace("\n", "").replace("\r", "")[:-1])
             except:
                 print_message("Please check the IO Value:")
-                print_message(
-                    "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                )
+                print_message("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
 
             else:
                 if voltage < 0 or voltage > 10:
@@ -1519,32 +1472,16 @@ def RunCommand(cmd_line):
                     aIO_value = float(cmd_words[4])
             except:
                 print("Please check the IO Value:")
-                print(
-                    "Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0."
-                )
+                print("Relative to the analog signal level (percentage of analog output range), float type data: [0:1], if the given value is greater than 1, then set to 1, less than 0, set to 0.")
 
         out_script = []
         if aIO_id != -1 and aIO_value != -1:
             out_script = "sec pcscript():\n"
 
             if aIO_domain == 0 or aIO_domain == 1:
-                out_script = (
-                    out_script
-                    + "  set_standard_analog_output_domain("
-                    + str(aIO_id)
-                    + ","
-                    + str(aIO_domain)
-                    + ")\n"
-                )
+                out_script = (out_script + "  set_standard_analog_output_domain(" + str(aIO_id) + "," + str(aIO_domain) + ")\n")
 
-            out_script = (
-                out_script
-                + "  set_standard_analog_out("
-                + str(aIO_id)
-                + ","
-                + str(aIO_value)
-                + ")\n"
-            )
+            out_script = (out_script + "  set_standard_analog_out(" + str(aIO_id) + "," + str(aIO_value) + ")\n")
             out_script = out_script + "end\n"
 
             try:
@@ -1563,40 +1500,16 @@ def RunCommand(cmd_line):
         dIO_id = -1
         dIO_value = -1
 
-        index = [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9",
-            "10",
-            "11",
-            "12",
-            "13",
-            "14",
-            "15",
-        ]
-        if cmd_words[3] not in index:
+        if cmd_words[3] not in [str(i) for i in range(16)]:
             print_message("Please check the IO Name:")
             print_message("The index of the input, integer type data: [0:15]")
 
         else:
             dIO_id = cmd_words[3]
 
-        if (
-            cmd_words[4].replace("\n", "").replace("\r", "") == "1"
-            or cmd_words[4].replace("\n", "").replace("\r", "") == "True"
-        ):
+        if (cmd_words[4].replace("\n", "").replace("\r", "") == "1" or cmd_words[4].replace("\n", "").replace("\r", "") == "True"):
             dIO_value = 1
-        elif (
-            cmd_words[4].replace("\n", "").replace("\r", "") == "0"
-            or cmd_words[4].replace("\n", "").replace("\r", "") == "False"
-        ):
+        elif (cmd_words[4].replace("\n", "").replace("\r", "") == "0" or cmd_words[4].replace("\n", "").replace("\r", "") == "False"):
             dIO_value = 0
         else:
             print_message("Please check the IO Value:")
@@ -1619,21 +1532,14 @@ def RunCommand(cmd_line):
         message = cmd_line[6:].replace("\n", "").replace("\r", "")
 
         out_script = "def pcscript():\n"
-        out_script = (
-            out_script
-            + "  popup(s="
-            + repr(message)
-            + ",title='Message From RoboDK')\n"
-        )
+        out_script = (out_script + "  popup(s=" + repr(message) + ",title='Message From RoboDK',blocking=True)\n")
         out_script = out_script + "end\n"
 
         try:
-            ROBOT.SendCmd(out_script)
+            ROBOT.SendPopup(out_script)
         except:
             UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
-
         else:
-
             UpdateStatus(ROBOTCOM_READY)
 
     elif cmd_line.startswith("DISCONNECT"):
@@ -1672,9 +1578,6 @@ def RunCommand(cmd_line):
 
 def RunMain():
     """Call Main procedure"""
-
-    # Flush version
-    print_message("RoboDK Driver v2.0 for Elite Robot controllers")
 
     # It is important to disconnect the robot if we force to stop the process
     import atexit
