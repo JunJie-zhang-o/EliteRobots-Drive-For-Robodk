@@ -617,7 +617,10 @@ class ComRobot:
             else:
 
                 if len(bin(data.digital_output_bits)) - 2 < int(dIO_id) + 1:
-                    continue
+                    if dIO_value == 0:
+                        return True
+                    else:
+                        continue
                 else:
                     if bin(data.digital_output_bits)[-int(dIO_id) - 1] == str(dIO_value):
                         return True
