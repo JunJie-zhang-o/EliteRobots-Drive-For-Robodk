@@ -964,9 +964,6 @@ class RobotPost(object):
 
             result = True
             for file in self.PROG_FILES:
-                remote_path_exist = get_remote_path(robot_ip, ftp_user, ftp_pass)
-                if remote_path_exist:
-                    remote_path = remote_path_exist
                 remote_file_path = remote_path + getBaseName(file)
                 if not sftp_download(robot_ip, ftp_user, ftp_pass, file, remote_file_path):
                     result = False
