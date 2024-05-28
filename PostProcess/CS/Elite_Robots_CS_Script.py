@@ -893,17 +893,6 @@ class RobotPost(object):
         :param ftp_pass: FTP user password
         :type ftp_pass: str
         """
-        if remote_path == "" or remote_path == "/":
-            remote_path = "/home/elite/user/program/"
-        if remote_path[-1] != "/":
-            remote_path += "/"
-
-        if ftp_user == "":
-            ftp_user = "root"
-
-        if ftp_pass == "":
-            ftp_pass = "elibot"
-
         try:
             from robodk.robolink import import_install
             import_install('paramiko')
@@ -916,6 +905,24 @@ class RobotPost(object):
                 "Module not found",
             )
             return
+
+        def get_remote_path(ip, user, pwd):
+            try:
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh_client.connect(hostname=ip, port=22, username=user, password=pwd)
+                sftp = ssh_client.open_sftp()
+                sftp.stat('/home/elite/user/program')
+                remote_path = '/home/elite/user/program/'
+                sftp.close()
+                return remote_path
+            except Exception as e:
+                try:
+                    sftp.stat('/rbctrl/EliRobot_share/program')
+                    remote_path = '/rbctrl/EliRobot_share/program/'
+                    sftp.close()
+                    return remote_path
+                except Exception as e:
+                    return False
 
         def sftp_download(ip, user, pwd, local_file_path, remote_file_path):
             try:
@@ -934,6 +941,21 @@ class RobotPost(object):
                 ssh_client.close()
                 return True
 
+        ftp_user = "root"
+        ftp_pass = "elibot"
+        if remote_path == "" or remote_path == "/":
+            remote_path_exist = get_remote_path(robot_ip, ftp_user, ftp_pass)
+            if remote_path_exist:
+                remote_path = remote_path_exist
+            else:
+                ShowMessage(
+                    "Invalid Remote FTP path",
+                    "Remote FTP path Error",
+                )
+                return
+        if remote_path[-1] != "/":
+            remote_path += "/"
+
         if isinstance(self.PROG_FILES, list):
             if len(self.PROG_FILES) == 0:
                 ShowMessage("Nothing to transfer", "Error")
@@ -942,7 +964,9 @@ class RobotPost(object):
 
             result = True
             for file in self.PROG_FILES:
-
+                remote_path_exist = get_remote_path(robot_ip, ftp_user, ftp_pass)
+                if remote_path_exist:
+                    remote_path = remote_path_exist
                 remote_file_path = remote_path + getBaseName(file)
                 if not sftp_download(robot_ip, ftp_user, ftp_pass, file, remote_file_path):
                     result = False
