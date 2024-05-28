@@ -58,10 +58,10 @@
 import socket
 import struct
 import sys
+import threading
 import time
 import select
 import math
-
 from io import BytesIO
 
 tcp_pose = [0, 0, 0, 0, 0, 0]
@@ -461,6 +461,7 @@ class ComRobot:
         ROBOT_MOVING = False
 
         try:
+            HostIP = self.get_host_ip(IPAdd)
             ROBOT.CS_getjoints()
         except:
             UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
@@ -532,6 +533,76 @@ class ComRobot:
             return None
 
         return False
+    
+    def get_host_ip(self, ip, port=30001):
+        try:
+            s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+            s.connect((ip,port))
+            hostip=s.getsockname()[0]
+        finally:
+            s.close()
+
+        return hostip
+
+    def get_free_tcp_port(self):
+        tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp.bind(("", 0))
+        _, port = tcp.getsockname()
+        tcp.close()
+        return port
+    
+    def check_path_exist(self):
+        try:
+            from robodk.robolink import import_install
+            import_install('paramiko')
+            import paramiko
+
+            ssh_client = paramiko.SSHClient()
+        except ModuleNotFoundError as e:
+            print_message("paramiko module not found, please use 'pip install paramiko' to install paramiko module")
+            UpdateStatus(ROBOTCOM_DISCONNECTED)
+            return
+
+        try:
+            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh_client.connect(hostname=IPAdd, port=22, username='root', password='elibot')
+            sftp = ssh_client.open_sftp()
+            sftp.stat('/home/elite/user/program')
+        except Exception as e:
+            return False
+        else:
+            sftp.close()
+            ssh_client.close()
+            return True
+        
+    def check_file_content(self):
+        try:
+            from robodk.robolink import import_install
+            import_install('paramiko')
+            import paramiko
+
+            ssh_client = paramiko.SSHClient()
+        except ModuleNotFoundError as e:
+            print_message("paramiko module not found, please use 'pip install paramiko' to install paramiko module")
+            UpdateStatus(ROBOTCOM_DISCONNECTED)
+            return
+
+        try:
+            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh_client.connect(hostname=IPAdd, port=22, username='root', password='elibot')
+            sftp = ssh_client.open_sftp()
+            with sftp.open('/home/elite/user/program/.txt','r') as f:
+                if f.read().decode() == 'Continue':
+                    sftp.remove('/home/elite/user/program/.txt')
+                    sftp.close()
+                    ssh_client.close()
+                    return True
+                else:
+                    sftp.close()
+                    ssh_client.close()
+                    return False
+        except Exception as e:
+            return False
 
     def tcp_compare(self, tcp_pose):
         new = ComRobot()
@@ -929,7 +1000,26 @@ class ComRobot:
                     ROBOT_MOVING = True
             time.sleep(0.1)
 
-    def SendPopup(self, outscript):
+    def RecvPopup(self,port):
+        HOST = "0.0.0.0"
+        PORT = port
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            s.bind((HOST, PORT))
+            s.listen()
+            conn, addr = s.accept()
+            with conn:
+                while True:
+                    data = conn.recv(1024)
+                    if data.decode() == "Continue":
+                        global TASK_CONTINUE
+                        TASK_CONTINUE = True
+                        s.close()
+                        return True
+
+    def SendPopup(self, outscript, port='', read_file=None):
+        if read_file:
             ROBOT.SendCmd(outscript)
 
             new = ComRobot()
@@ -942,7 +1032,42 @@ class ComRobot:
                 else:
                     if not data.is_program_running:
                         if not data.is_program_paused:
+                            if ROBOT.check_file_content():
                                 return True
+                            else:
+                                ROBOT.CS_getjoints()
+                                return False
+
+                time.sleep(0.1)
+        else:
+            global TASK_CONTINUE
+            TASK_CONTINUE = False
+            try:
+                thread = threading.Thread(target=self.RecvPopup,args=(port,))
+                thread.start()
+            except:
+                print_message("The socket server could not be created.")
+                print_message("Please verify that port "+str(port)+" is available.")
+                return False
+            
+            time.sleep(0.1)
+            ROBOT.SendCmd(outscript)
+
+            new = ComRobot()
+            new.newconnect(IPAdd)
+
+            while True:
+                data = new.get_data()
+                if data == None:
+                    continue
+                else:
+                    if not data.is_program_running:
+                        if not data.is_program_paused:
+                            if TASK_CONTINUE:
+                                return True
+                            else:
+                                ROBOT.CS_getjoints()
+                                return False
 
                 time.sleep(0.1)
 
@@ -1366,14 +1491,38 @@ def RunCommand(cmd_line):
         else:
             out_script = "def pcscript():\n"
             out_script = (out_script + "  popup(s='Pause',title='Message From RoboDK',blocking=True)\n")
-            out_script = out_script + "end\n"
 
-            try:
-                ROBOT.SendPopup(out_script)
-            except:
-                UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+            read_file = ROBOT.check_path_exist()
+            if read_file:
+                out_script = out_script + "  with open(get_task_path()+'.txt', 'w', encoding='utf-8') as f:\n"
+                out_script = out_script + "    f.write('Continue')\n"
+                out_script = out_script + "end\n"
+
+                try:
+                    ContinueorStop = ROBOT.SendPopup(out_script,read_file=read_file)
+                except:
+                    UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+                else:
+                    if ContinueorStop:
+                        UpdateStatus(ROBOTCOM_READY)
+                    else:
+                        UpdateStatus(ROBOTCOM_DISCONNECTED)
             else:
-                UpdateStatus(ROBOTCOM_READY)
+                port = ROBOT.get_free_tcp_port()
+                out_script = out_script + "  socket_open('"+HostIP+"',"+str(port)+")\n"
+                out_script = out_script + "  socket_send_string('Continue')\n"
+                out_script = out_script + "  socket_close()\n"
+                out_script = out_script + "end\n"
+
+                try:
+                    ContinueorStop = ROBOT.SendPopup(out_script,port=port)
+                except:
+                    UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+                else:
+                    if ContinueorStop:
+                        UpdateStatus(ROBOTCOM_READY)
+                    else:
+                        UpdateStatus(ROBOTCOM_DISCONNECTED)
 
     elif n_cmd_values >= 1 and cmd_line.startswith("SETROUNDING"):
 
@@ -1535,14 +1684,37 @@ def RunCommand(cmd_line):
 
         out_script = "def pcscript():\n"
         out_script = (out_script + "  popup(s=" + repr(message) + ",title='Message From RoboDK',blocking=True)\n")
-        out_script = out_script + "end\n"
+        read_file = ROBOT.check_path_exist()
+        if read_file:
+            out_script = out_script + "  with open(get_task_path()+'.txt', 'w', encoding='utf-8') as f:\n"
+            out_script = out_script + "    f.write('Continue')\n"
+            out_script = out_script + "end\n"
 
-        try:
-            ROBOT.SendPopup(out_script)
-        except:
-            UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+            try:
+                ContinueorStop = ROBOT.SendPopup(out_script,read_file=read_file)
+            except:
+                UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+            else:
+                if ContinueorStop:
+                    UpdateStatus(ROBOTCOM_READY)
+                else:
+                    UpdateStatus(ROBOTCOM_DISCONNECTED)
         else:
-            UpdateStatus(ROBOTCOM_READY)
+            port = ROBOT.get_free_tcp_port()
+            out_script = out_script + "  socket_open('"+HostIP+"',"+str(port)+")\n"
+            out_script = out_script + "  socket_send_string('Continue')\n"
+            out_script = out_script + "  socket_close()\n"
+            out_script = out_script + "end\n"
+
+            try:
+                ContinueorStop = ROBOT.SendPopup(out_script,port=port)
+            except:
+                UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
+            else:
+                if ContinueorStop:
+                    UpdateStatus(ROBOTCOM_READY)
+                else:
+                    UpdateStatus(ROBOTCOM_DISCONNECTED)
 
     elif cmd_line.startswith("DISCONNECT"):
 
