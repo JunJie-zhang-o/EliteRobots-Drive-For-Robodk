@@ -1063,15 +1063,20 @@ class RobotPost(object):
                 return remote_path
             except Exception as e:
                 try:
+                    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh_client.connect(hostname=ip, port=22, username=user, password=pwd)
+                    sftp = ssh_client.open_sftp()
                     sftp.stat('/rbctrl/EliRobot_share/program')
                     remote_path = '/rbctrl/EliRobot_share/program/'
                     sftp.close()
                     ssh_client.close()
                     return remote_path
                 except Exception as e:
-                    sftp.close()
-                    ssh_client.close()
-                    return False
+                    ShowMessage(
+                        f"Remote path not found!\nRobot IP: {robot_ip}\nFTP user name: {ftp_user}\nFTP password: {ftp_pass}\n{e}",
+                        "Error",
+                    )
+                    return
 
         def sftp_download(ip, user, pwd, local_file_path, remote_file_path):
             try:
@@ -1081,7 +1086,7 @@ class RobotPost(object):
                 files = ftp.put(local_file_path, remote_file_path)
             except Exception as e:
                 ShowMessage(
-                    f"{local_file_path}\tsend failed\nRobot IP: {robot_ip}\nFTP path: {remote_path}\nFTP user name: {ftp_user}\nFTP password: {ftp_pass}\n{e}\nPlease check the Remote FTP path!",
+                    f"{local_file_path}\tsend failed\nRobot IP: {robot_ip}\nFTP path: {remote_path}\nFTP user name: {ftp_user}\nFTP password: {ftp_pass}\n{e}",
                     "Error",
                 )
                 return False
@@ -1097,10 +1102,6 @@ class RobotPost(object):
             if remote_path_exist:
                 remote_path = remote_path_exist
             else:
-                ShowMessage(
-                    "Invalid Remote FTP path",
-                    "Remote FTP path Error",
-                )
                 return
         if remote_path[-1] != "/":
             remote_path += "/"
