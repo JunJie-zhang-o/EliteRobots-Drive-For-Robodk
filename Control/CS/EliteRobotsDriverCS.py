@@ -1063,6 +1063,7 @@ class ComRobot:
                 else:
                     if not data.is_program_running:
                         if not data.is_program_paused:
+                            time.sleep(2)
                             if TASK_CONTINUE:
                                 return True
                             else:
