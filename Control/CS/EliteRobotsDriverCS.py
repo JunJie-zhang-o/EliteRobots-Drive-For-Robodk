@@ -55,6 +55,7 @@
 #  Response:   JNTS: 10 20 30 40 50 60 70
 #
 # ---------------------------------------------------------------------------------
+import os
 import socket
 import struct
 import sys
@@ -1006,6 +1007,7 @@ class ComRobot:
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             s.bind((HOST, PORT))
             s.listen()
             conn, addr = s.accept()
@@ -1015,15 +1017,33 @@ class ComRobot:
                     if data.decode() == "Continue":
                         global TASK_CONTINUE
                         TASK_CONTINUE = True
-                        s.close()
                         return True
 
-    def SendPopup(self, outscript, port='', read_file=None):
-        if read_file:
-            ROBOT.SendCmd(outscript)
+    def SendPopup(self, out_script, port='', read_file=None):
+        new = ComRobot()
+        new.newconnect(IPAdd)
 
-            new = ComRobot()
-            new.newconnect(IPAdd)
+        if read_file:
+            while True:
+                data = new.get_data()
+                if data == None:
+                    continue
+                else:
+                    if not data.is_program_running:
+                        if not data.is_program_paused:
+                            robot_mode = data.get_robot_mode
+                            if robot_mode == 7:
+                                ROBOT.SendCmd(out_script)
+                            else:
+                                print_message("Error, please check the robot status.")
+                                if robot_mode == 3:
+                                    print_message("Please turn on the power and release brakes first!")
+                                elif robot_mode == 5:
+                                    print_message("Please release brakes first!")
+                                return False
+                            break
+
+                time.sleep(0.1)
 
             while True:
                 data = new.get_data()
@@ -1033,12 +1053,13 @@ class ComRobot:
                     if not data.is_program_running:
                         if not data.is_program_paused:
                             if ROBOT.check_file_content():
-                                return True
+                                return 'Continue'
                             else:
                                 ROBOT.CS_getjoints()
-                                return False
+                                return 'Stop'
 
                 time.sleep(0.1)
+
         else:
             global TASK_CONTINUE
             TASK_CONTINUE = False
@@ -1050,12 +1071,6 @@ class ComRobot:
                 print_message("Please verify that port "+str(port)+" is available.")
                 return False
             
-            time.sleep(0.1)
-            ROBOT.SendCmd(outscript)
-
-            new = ComRobot()
-            new.newconnect(IPAdd)
-
             while True:
                 data = new.get_data()
                 if data == None:
@@ -1063,12 +1078,38 @@ class ComRobot:
                 else:
                     if not data.is_program_running:
                         if not data.is_program_paused:
-                            time.sleep(2)
-                            if TASK_CONTINUE:
-                                return True
+                            robot_mode = data.get_robot_mode
+                            if robot_mode == 7:
+                                time.sleep(0.1)
+                                ROBOT.SendCmd(out_script)
                             else:
-                                ROBOT.CS_getjoints()
+                                print_message("Error, please check the robot status.")
+                                if robot_mode == 3:
+                                    print_message("Please turn on the power and release brakes first!")
+                                elif robot_mode == 5:
+                                    print_message("Please release brakes first!")
                                 return False
+                            break
+
+                time.sleep(0.1)
+
+            PopupSent = False
+            while True:
+                data = new.get_data()
+                if data == None:
+                    continue
+                else:
+                    if not data.is_program_running:
+                        if not data.is_program_paused:
+                            if PopupSent:
+                                time.sleep(2)
+                                if TASK_CONTINUE:
+                                    return 'Continue'
+                                else:
+                                    ROBOT.CS_getjoints()
+                                    return 'Stop'
+                    else:
+                        PopupSent = True                        
 
                 time.sleep(0.1)
 
@@ -1504,14 +1545,16 @@ def RunCommand(cmd_line):
                 except:
                     UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
                 else:
-                    if ContinueorStop:
+                    if ContinueorStop == 'Continue':
                         UpdateStatus(ROBOTCOM_READY)
-                    else:
+                    elif ContinueorStop == 'Stop':
                         UpdateStatus(ROBOTCOM_DISCONNECTED)
+                        os._exit(1)
             else:
                 port = ROBOT.get_free_tcp_port()
                 out_script = out_script + "  socket_open('"+HostIP+"',"+str(port)+")\n"
                 out_script = out_script + "  socket_send_string('Continue')\n"
+                out_script = out_script + "  sleep(0.01)\n"
                 out_script = out_script + "  socket_close()\n"
                 out_script = out_script + "end\n"
 
@@ -1520,10 +1563,11 @@ def RunCommand(cmd_line):
                 except:
                     UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
                 else:
-                    if ContinueorStop:
+                    if ContinueorStop == 'Continue':
                         UpdateStatus(ROBOTCOM_READY)
-                    else:
+                    elif ContinueorStop == 'Stop':
                         UpdateStatus(ROBOTCOM_DISCONNECTED)
+                        os._exit(1)
 
     elif n_cmd_values >= 1 and cmd_line.startswith("SETROUNDING"):
 
@@ -1696,14 +1740,16 @@ def RunCommand(cmd_line):
             except:
                 UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
             else:
-                if ContinueorStop:
+                if ContinueorStop == 'Continue':
                     UpdateStatus(ROBOTCOM_READY)
-                else:
+                elif ContinueorStop == 'Stop':
                     UpdateStatus(ROBOTCOM_DISCONNECTED)
+                    os._exit(1)
         else:
             port = ROBOT.get_free_tcp_port()
             out_script = out_script + "  socket_open('"+HostIP+"',"+str(port)+")\n"
             out_script = out_script + "  socket_send_string('Continue')\n"
+            out_script = out_script + "  sleep(0.01)\n"
             out_script = out_script + "  socket_close()\n"
             out_script = out_script + "end\n"
 
@@ -1712,10 +1758,11 @@ def RunCommand(cmd_line):
             except:
                 UpdateStatus(ROBOTCOM_CONNECTION_PROBLEMS)
             else:
-                if ContinueorStop:
+                if ContinueorStop == 'Continue':
                     UpdateStatus(ROBOTCOM_READY)
-                else:
+                elif ContinueorStop == 'Stop':
                     UpdateStatus(ROBOTCOM_DISCONNECTED)
+                    os._exit(1)
 
     elif cmd_line.startswith("DISCONNECT"):
 
