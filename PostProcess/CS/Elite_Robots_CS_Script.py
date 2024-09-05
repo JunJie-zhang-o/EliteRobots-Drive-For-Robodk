@@ -323,6 +323,14 @@ ELITE_KEYWORDS = [
     "serial_open",
     "serial_close",
     "serial_open_list",
+    "pause",
+    "halt",
+    "get_all_inverse_kin",
+    "socket_is_connected",
+    "set_collision_warning_thresh",
+    "get_collision_warning_thresh",
+    "config_collision_fallback",
+    "get_collision_fallback_config",
 ]
 
 ELISERVER_KEYWORDS = [
