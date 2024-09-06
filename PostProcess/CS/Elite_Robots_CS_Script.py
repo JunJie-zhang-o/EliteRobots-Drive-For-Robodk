@@ -916,9 +916,10 @@ class RobotPost(object):
         # Japanese controllers need the shift_jis codec and replace errors to not throw errors on non supported characters
         # with open(filesave, "w", encoding="shift_jis", errors="replace") as fid:
         with open(filesave, "w", encoding="utf-8") as fid:
-            for line in self.PROG:
+            for index, line in enumerate(self.PROG):
                 fid.write(line)
-                fid.write("\n")
+                if index < len(self.PROG) - 1:
+                    fid.write("\n")
 
         print("SAVED: %s\n" % filesave)
         self.PROG_FILES.append(filesave)
