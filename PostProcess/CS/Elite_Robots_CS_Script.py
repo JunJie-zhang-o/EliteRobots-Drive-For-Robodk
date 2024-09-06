@@ -52,6 +52,8 @@ import math
 import re
 import keyword
 import builtins
+import socket
+import time
 
 # Import RoboDK tools
 from robodk.robomath import *
@@ -1008,6 +1010,48 @@ class RobotPost(object):
                 ssh_client.close()
                 return True
 
+        def send_dashboard(ip, cmd):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(36000)
+                s.connect((ip, 29999))
+                data = s.recv(4096)
+                try:
+                    s.sendall(bytes(cmd+'\n', "utf-8"))
+                    data = s.recv(4096).decode()
+                    s.close()
+                    return data
+                except Exception as e:
+                    return False
+
+        def status_check(ip):
+            if send_dashboard(ip,"remoteControl -s") == 'LOCAL\r\n':
+                ShowMessage("Please change to Remote Control Mode.","Error")
+                return False
+
+            while True:
+                if send_dashboard(ip,"status").find('POWER_OFF') != -1:
+                    send_dashboard(ip,"robotControl -on")
+                    time.sleep(1)
+                elif send_dashboard(ip,"status").find('IDLE') != -1:
+                    send_dashboard(ip,"brakeRelease")
+                    time.sleep(1)
+                elif send_dashboard(ip,"status").find('RUNNING') != -1:
+                    return True
+
+        def run_program(ip, cmd):
+            """Send a command. Returns True if success, False otherwise."""
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(36000)
+                s.connect((ip, 30001))
+                try:
+                    s.sendall(bytes(cmd, "utf-8"))
+                except Exception as e:
+                    ShowMessage(f"Failed to run program remotely.\n{e}","Error")
+                    return False
+                s.close()
+            return True
+
         ftp_user = "root"
         ftp_pass = "elibot"
         if remote_path == "" or remote_path == "/":
@@ -1041,6 +1085,24 @@ class RobotPost(object):
                         "Done: %i files successfully transferred" % len(self.PROG_FILES),
                         "Success",
                     )
+                ret = ShowMessageYesNoCancel('''Should the program be run continuously?\nTo run continuously, please select "Yes"\nTo run once, please select "No"\nDon't run the program, please select "Cancel"''')
+                if ret == True:
+                    if status_check(robot_ip):
+                        cmd = 'def RoboDK():\n  while True:\n'
+                        for line in self.PROG:
+                            cmd += '    ' + line + '\n'
+                        cmd += 'end\n'
+                        run_program(robot_ip,cmd)
+                        if ShowMessage("Press OK to stop"):
+                            cmd = 'def RoboDK():\n  pass\nend\n'
+                            run_program(robot_ip,cmd)
+                elif ret == False:
+                    if status_check(robot_ip):
+                        cmd = 'def RoboDK():\n'
+                        for line in self.PROG:
+                            cmd += '  ' + line + '\n'
+                        cmd += 'end\n'
+                        run_program(robot_ip,cmd)
             else:
                 ShowMessage("Error program files", "Error")
         return
