@@ -52,14 +52,497 @@ import math
 import re
 import keyword
 import builtins
+import struct
 import socket
+import select
 import time
+import threading
 
-# Import RoboDK tools
+# Import RoboDK 
+from robodk.robolink import *
 from robodk.robomath import *
 from robodk.robodialogs import *
 from robodk.robofileio import *
 
+# ----------------------------------------------------
+DEFAULT_TIMEOUT = 10.0
+
+ROBOT_STATE_TYPE = 16
+ROBOT_EXCEPTION = 20
+
+# Robot exception message type
+ROBOT_MESSAGE_RUNTIME_EXCEPTION = 10
+ROBOT_MESSAGE_EXCEPTION = 6
+
+# Robot exception data type
+ROBOT_EXCEPTION_DATA_TYPE_NONE = 0
+ROBOT_EXCEPTION_DATA_TYPE_UNSIGNED = 1
+ROBOT_EXCEPTION_DATA_TYPE_SIGNED = 2
+ROBOT_EXCEPTION_DATA_TYPE_FLOAT = 3
+ROBOT_EXCEPTION_DATA_TYPE_HEX = 4
+ROBOT_EXCEPTION_DATA_TYPE_STRING = 5
+ROBOT_EXCEPTION_DATA_TYPE_JOINT = 6
+
+class RobotHeader():
+    __slots__ = ['type', 'size',]
+    @staticmethod
+    def unpack(buf):
+        rmd = RobotHeader()
+        (rmd.size, rmd.type) = struct.unpack_from('>iB', buf)
+        return rmd
+
+class RobotDataConfig():
+    def __init__(self):
+        self.name = [
+            "total_message_len",
+            "total_message_type",
+            "mode_sub_len",
+            "mode_sub_type",
+            "timestamp",
+            "reserver",
+            "reserver",
+            "is_robot_power_on",
+            "is_emergency_stopped",
+            "is_robot_protective_stopped",
+            "is_program_running",
+            "is_program_paused",
+            "get_robot_mode",
+            "get_robot_control_mode",
+            "get_target_speed_fraction",
+            "get_speed_scaling",
+            "get_target_speed_fraction_limit",
+            "get_robot_speed_mode",
+            "is_robot_system_in_alarm",
+            "is_in_package_mode",
+            "reverse",
+            "joint_sub_len",
+            "joint_sub_type",
+            "actual_joint0",
+            "target_joint0",
+            "actual_velocity0",
+            "target_pluse0",
+            "actual_pluse0",
+            "zero_pluse0",
+            "current0",
+            "voltage0",
+            "temperature0",
+            "torques0",
+            "mode0",
+            "reverse0",
+            "actual_joint1",
+            "target_joint1",
+            "actual_velocity1",
+            "target_pluse1",
+            "actual_pluse1",
+            "zero_pluse1",
+            "current1",
+            "voltage1",
+            "temperature1",
+            "torques1",
+            "mode1",
+            "reverse1",
+            "actual_joint2",
+            "target_joint2",
+            "actual_velocity2",
+            "target_pluse2",
+            "actual_pluse2",
+            "zero_pluse2",
+            "current2",
+            "voltage2",
+            "temperature2",
+            "torques2",
+            "mode2",
+            "reverse2",
+            "actual_joint3",
+            "target_joint3",
+            "actual_velocity3",
+            "target_pluse3",
+            "actual_pluse3",
+            "zero_pluse3",
+            "current3",
+            "voltage3",
+            "temperature3",
+            "torques3",
+            "mode3",
+            "reverse3",
+            "actual_joint4",
+            "target_joint4",
+            "actual_velocity4",
+            "target_pluse4",
+            "actual_pluse4",
+            "zero_pluse4",
+            "current4",
+            "voltage4",
+            "temperature4",
+            "torques4",
+            "mode4",
+            "reverse4",
+            "actual_joint5",
+            "target_joint5",
+            "actual_velocity5",
+            "target_pluse5",
+            "actual_pluse5",
+            "zero_pluse5",
+            "current5",
+            "voltage5",
+            "temperature5",
+            "torques5",
+            "mode5",
+            "reverse5",
+            "cartesial_sub_len",
+            "cartesial_sub_type",
+            "tcp_x",
+            "tcp_y",
+            "tcp_z",
+            "rot_x",
+            "rot_y",
+            "rot_z",
+            "offset_px",
+            "offset_py",
+            "offset_pz",
+            "offset_rotx",
+            "offset_roty",
+            "offset_rotz",
+            "configuration_sub_len",
+            "configuration_sub_type",
+            "limit_min_joint_x0",
+            "limit_max_joint_x0",
+            "limit_min_joint_x1",
+            "limit_max_joint_x1",
+            "limit_min_joint_x2",
+            "limit_max_joint_x2",
+            "limit_min_joint_x3",
+            "limit_max_joint_x3",
+            "limit_min_joint_x4",
+            "limit_max_joint_x4",
+            "limit_min_joint_x5",
+            "limit_max_joint_x5",
+            "max_velocity_joint_x0",
+            "max_acc_joint_x0",
+            "max_velocity_joint_x1",
+            "max_acc_joint_x1",
+            "max_velocity_joint_x2",
+            "max_acc_joint_x2",
+            "max_velocity_joint_x3",
+            "max_acc_joint_x3",
+            "max_velocity_joint_x4",
+            "max_acc_joint_x4",
+            "max_velocity_joint_x5",
+            "max_acc_joint_x5",
+            "default_velocity_joint",
+            "default_acc_joint",
+            "default_tool_velocity",
+            "default_tool_acc",
+            "eq_radius",
+            "dh_a_joint_x0",
+            "dh_a_joint_x1",
+            "dh_a_joint_x2",
+            "dh_a_joint_x3",
+            "dh_a_joint_x4",
+            "dh_a_joint_x5",
+            "dh_d_joint_d0",
+            "dh_d_joint_d1",
+            "dh_d_joint_d2",
+            "dh_d_joint_d3",
+            "dh_d_joint_d4",
+            "dh_d_joint_d5",
+            "dh_alpha_joint_x0",
+            "dh_alpha_joint_x1",
+            "dh_alpha_joint_x2",
+            "dh_alpha_joint_x3",
+            "dh_alpha_joint_x4",
+            "dh_alpha_joint_x5",
+            "reserver0",
+            "reserver1",
+            "reserver2",
+            "reserver3",
+            "reserver4",
+            "reserver5",
+            "board_version",
+            "control_box_type",
+            "robot_type",
+            "robot_struct",
+            "masterboard_sub_len",
+            "masterboard_sub_type",
+            "digital_input_bits",
+            "digital_output_bits",
+            "standard_analog_input_domain0",
+            "standard_analog_input_domain1",
+            "tool_analog_input_domain",
+            "standard_analog_input_value0",
+            "standard_analog_input_value1",
+            "tool_analog_input_value",
+            "standard_analog_output_domain0",
+            "standard_analog_output_domain1",
+            "tool_analog_output_domain",
+            "standard_analog_output_value0",
+            "standard_analog_output_value1",
+            "tool_analog_output_value",
+            "bord_temperature",
+            "robot_voltage",
+            "robot_current",
+            "io_current",
+            "bord_safe_mode",
+            "is_robot_in_reduced_mode",
+            "get_operational_mode_selector_input",
+            "get_threeposition_enabling_device_input",
+            "masterboard_safety_mode",
+            "additional_sub_len",
+            "additional_sub_type",
+            "is_freedrive_button_pressed",
+            "reserve",
+            "is_freedrive_io_enabled",
+            "is_dynamic_collision_detect_enabled",
+            "reserver",
+            "tool_sub_len",
+            "tool_sub_type",
+            "tool_analog_output_domain",
+            "tool_analog_input_domain",
+            "tool_analog_output_value",
+            "tool_analog_input_value",
+            "tool_voltage",
+            "tool_output_voltage",
+            "tool_current",
+            "tool_temperature",
+            "tool_mode",
+            "safe_sub_len",
+            "safe_sub_type",
+            "safety_crc_num",
+            "safety_operational_mode",
+            "reserver",
+            "current_elbow_position_x",
+            "current_elbow_position_y",
+            "current_elts",
+            "tci_modbus_status",
+            "tci_usage",
+            "reserved0",
+            "reserved1",
+        ]
+        self.fmt = ">IBIBQ???????BBdddB??IIBdddiiiffffBidddiiiffffBidddiiiffffBidddiiiffffBidddiiiffffBidddiiiffffBiIBddddddddddddIBdddddddddddddddddddddddddddddddddddddddddddddddddddddIIIIIBIIBBBdddBBBdddffffB???BIB????BIBBBddfBffBIBIbBddddIB?III?Bff"
+
+class RobotException():
+    __slots__ = ['time_stamp', 'exception_source', 'exception_type', 'code', 'subcode', 'level', 'data', 'script_line', 'script_column', 'description']
+    def __init__(self, time_stamp, exception_source, exception_type) -> None:
+        self.time_stamp = time_stamp
+        self.exception_source = exception_source
+        self.exception_type = exception_type
+    def set_robot_exception(self, code, subcode, level, data):
+        self.code = code
+        self.subcode = subcode
+        self.level = level
+        self.data = data
+    def set_runtime_exception(self, script_line, script_column, description):
+        self.script_line = script_line
+        self.script_column = script_column
+        self.description = description
+    @staticmethod
+    def unpack_exception(buffer:bytes):
+        (pack_len, pack_type, timestamp, source, msg_type) = struct.unpack_from('>iBQBB', buffer)
+        if msg_type == ROBOT_MESSAGE_RUNTIME_EXCEPTION:
+            (pack_len, pack_type, timestamp, source, msg_type, script_line, script_column) = struct.unpack_from('>iBQBBii', buffer)
+            exception = RobotException(timestamp, source, msg_type)
+            description = buffer[struct.calcsize(">iBQBBii"):pack_len]
+            description = description.decode("utf-8")
+            exception.set_runtime_exception(script_line, script_column, description)
+            return exception
+        elif msg_type == ROBOT_MESSAGE_EXCEPTION:
+            (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type) = struct.unpack_from('>iBQBBiiii', buffer)
+            if data_type == ROBOT_EXCEPTION_DATA_TYPE_NONE:
+                (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type, data) = struct.unpack_from('>iBQBBiiiiI', buffer)
+            elif data_type == ROBOT_EXCEPTION_DATA_TYPE_UNSIGNED:
+                (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type, data) = struct.unpack_from('>iBQBBiiiiI', buffer)
+            elif data_type == ROBOT_EXCEPTION_DATA_TYPE_SIGNED:
+                (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type, data) = struct.unpack_from('>iBQBBiiiii', buffer)
+            elif data_type == ROBOT_EXCEPTION_DATA_TYPE_FLOAT:
+                (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type, data) = struct.unpack_from('>iBQBBiiiif', buffer)
+            elif data_type == ROBOT_EXCEPTION_DATA_TYPE_HEX:
+                (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type, data) = struct.unpack_from('>iBQBBiiiiI', buffer)
+            elif data_type == ROBOT_EXCEPTION_DATA_TYPE_STRING:
+                data = buffer[struct.calcsize(">iBQBBiiii") : pack_len]
+            elif data_type == ROBOT_EXCEPTION_DATA_TYPE_JOINT:
+                (pack_len, pack_type, timestamp, source, msg_type, code, subcode, level, data_type, data) = struct.unpack_from('>iBQBBiiiiI', buffer)
+            exception = RobotException(timestamp, source, msg_type)
+            exception.set_robot_exception(code, subcode, level, data)
+            return exception
+            
+
+class RobotData():
+    @staticmethod
+    def unpack(buf, config : RobotDataConfig):
+        data = RobotData()
+        unpack = struct.unpack_from(config.fmt, buf)
+        for i in range(len(config.name)):
+            name = config.name[i]
+            data.__dict__[name] = unpack[i]
+        return data
+
+class Robot():
+    def __init__(self) -> None:
+        config = RobotDataConfig()
+        self.__data_config = config
+
+    def connect(self, ip, port = 30001):
+        try:
+            self.__sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.__sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.__sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.__sock.settimeout(DEFAULT_TIMEOUT)
+            self.hostname = ip
+            self.port = port
+            self.__sock.connect((self.hostname, self.port))
+            self.__buf = bytes()
+        except (socket.timeout, socket.error):
+            self.__sock = None
+            raise
+    
+    def disconnect(self):
+        self.__sock.close()
+        self.__sock = None
+
+    def get_data(self):
+        return self.__recv()
+    
+    def send(self, script):
+        return self.__sock.send(script)
+
+    def __recv(self):
+        try:
+            self.__recv_to_buffer(DEFAULT_TIMEOUT)
+        except:
+            return None
+        while len(self.__buf) > 5:
+            head = RobotHeader.unpack(self.__buf)
+            if head.size <= len(self.__buf):
+                if head.type == ROBOT_STATE_TYPE:
+                    data = RobotData.unpack(self.__buf, self.__data_config)
+                    self.__buf = self.__buf[head.size :]
+                    return data
+                elif head.type == ROBOT_EXCEPTION:
+                    exception = RobotException.unpack_exception(self.__buf)
+                    if self.exception_hook is not None:
+                        self.exception_hook(exception)
+                    self.__buf = self.__buf[head.size :]
+                    return None
+                else:
+                    self.__buf = self.__buf[head.size :]
+                    continue
+            else:
+                break
+        return None
+
+    def __recv_to_buffer(self, timeout):
+        readable, _, xlist = select.select([self.__sock], [], [self.__sock], timeout)
+        if len(readable):
+            more = self.__sock.recv(4096)
+            # When the controller stops while the script is running
+            if len(more) == 0:
+                print('received 0 bytes from Controller')
+                return None
+            
+            self.__buf = self.__buf + more
+            return True
+        
+        if (len(xlist) or len(readable) == 0) and timeout != 0: # Effectively a timeout of timeout seconds
+            print ("no data received within timeout")
+            return None
+
+        return False
+
+# ----------------------------------------------------
+def print_joints(joints):
+    # Start RoboDK API
+    RDK = Robolink()
+
+    # Retrieve a robot
+    robot = RDK.Item('', ITEM_TYPE_ROBOT)
+
+    if not robot.Valid():
+        quit()
+
+    robot.setJoints(joints)
+
+def SendDashboard(ip, cmd):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(36000)
+        s.connect((ip, 29999))
+        data = s.recv(4096)
+        try:
+            s.sendall(bytes(cmd+'\n', "utf-8"))
+            data = s.recv(4096).decode()
+            s.close()
+            return data
+        except Exception as e:
+            return False
+
+def StatusCheck(ip):
+    if SendDashboard(ip,"remoteControl -s") == 'LOCAL\r\n':
+        ShowMessage("Please change to Remote Control Mode.","Error")
+        return False
+
+    while True:
+        if SendDashboard(ip,"status").find('POWER_OFF') != -1:
+            SendDashboard(ip,"robotControl -on")
+            time.sleep(1)
+        elif SendDashboard(ip,"status").find('IDLE') != -1:
+            SendDashboard(ip,"brakeRelease")
+            time.sleep(1)
+        elif SendDashboard(ip,"status").find('RUNNING') != -1:
+            return True
+
+def SendCmd(ip, cmd):
+    """Send a command. Returns True if success, False otherwise."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(36000)
+        s.connect((ip, 30001))
+        try:
+            s.sendall(bytes(cmd, "utf-8"))
+        except Exception as e:
+            ShowMessage(f"Failed to run program remotely.\n{e}","Error")
+            return False
+        s.close()
+    return True
+
+def SendMOV(ip, out_script):
+    new = Robot()
+    new.connect(ip)
+
+    SendCmd(ip, out_script)
+
+    retry = True
+    while True:
+        data = new.get_data()
+        if data == None:
+            continue
+        else:
+            actual_joints = [
+                data.actual_joint0,
+                data.actual_joint1,
+                data.actual_joint2,
+                data.actual_joint3,
+                data.actual_joint4,
+                data.actual_joint5,
+            ]
+            actual_joints_degrees = [
+                math.degrees(actual_joints[0]),
+                math.degrees(actual_joints[1]),
+                math.degrees(actual_joints[2]),
+                math.degrees(actual_joints[3]),
+                math.degrees(actual_joints[4]),
+                math.degrees(actual_joints[5]),
+            ]
+            if data.is_program_running:
+                if not data.is_program_paused:
+                    print_joints(actual_joints_degrees)
+            else:
+                time.sleep(1)
+                if retry:
+                    retry = False
+                else:
+                    print_joints(actual_joints_degrees)
+                    return True
+
+# ----------------------------------------------------
 ELITE_KEYWORDS = [
     "def",
     "sec",
@@ -1010,48 +1493,6 @@ class RobotPost(object):
                 ssh_client.close()
                 return True
 
-        def send_dashboard(ip, cmd):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(36000)
-                s.connect((ip, 29999))
-                data = s.recv(4096)
-                try:
-                    s.sendall(bytes(cmd+'\n', "utf-8"))
-                    data = s.recv(4096).decode()
-                    s.close()
-                    return data
-                except Exception as e:
-                    return False
-
-        def status_check(ip):
-            if send_dashboard(ip,"remoteControl -s") == 'LOCAL\r\n':
-                ShowMessage("Please change to Remote Control Mode.","Error")
-                return False
-
-            while True:
-                if send_dashboard(ip,"status").find('POWER_OFF') != -1:
-                    send_dashboard(ip,"robotControl -on")
-                    time.sleep(1)
-                elif send_dashboard(ip,"status").find('IDLE') != -1:
-                    send_dashboard(ip,"brakeRelease")
-                    time.sleep(1)
-                elif send_dashboard(ip,"status").find('RUNNING') != -1:
-                    return True
-
-        def run_program(ip, cmd):
-            """Send a command. Returns True if success, False otherwise."""
-
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(36000)
-                s.connect((ip, 30001))
-                try:
-                    s.sendall(bytes(cmd, "utf-8"))
-                except Exception as e:
-                    ShowMessage(f"Failed to run program remotely.\n{e}","Error")
-                    return False
-                s.close()
-            return True
-
         ftp_user = "root"
         ftp_pass = "elibot"
         if remote_path == "" or remote_path == "/":
@@ -1087,22 +1528,23 @@ class RobotPost(object):
                     )
                 ret = ShowMessageYesNoCancel('''Should the program be run continuously?\nTo run continuously, please select "Yes"\nTo run once, please select "No"\nDon't run the program, please select "Cancel"''')
                 if ret == True:
-                    if status_check(robot_ip):
+                    if StatusCheck(robot_ip):
                         cmd = 'def RoboDK():\n  while True:\n'
                         for line in self.PROG:
                             cmd += '    ' + line + '\n'
                         cmd += 'end\n'
-                        run_program(robot_ip,cmd)
-                        if ShowMessage("Press OK to stop"):
-                            cmd = 'def RoboDK():\n  pass\nend\n'
-                            run_program(robot_ip,cmd)
+                        t = threading.Thread(target=SendMOV,args=(robot_ip,cmd))
+                        t.daemon = False
+                        t.start()
                 elif ret == False:
-                    if status_check(robot_ip):
+                    if StatusCheck(robot_ip):
                         cmd = 'def RoboDK():\n'
                         for line in self.PROG:
                             cmd += '  ' + line + '\n'
                         cmd += 'end\n'
-                        run_program(robot_ip,cmd)
+                        t = threading.Thread(target=SendMOV,args=(robot_ip,cmd))
+                        t.daemon = False
+                        t.start()           
             else:
                 ShowMessage("Error program files", "Error")
         return
