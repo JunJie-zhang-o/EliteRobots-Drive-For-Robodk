@@ -531,14 +531,14 @@ def SendMOV(ip, out_script):
                 math.degrees(actual_joints[4]),
                 math.degrees(actual_joints[5]),
             ]
-            if data.is_program_running:
-                if not data.is_program_paused:
+            if not data.is_program_paused:
+                if data.is_program_running:
                     print_joints(actual_joints_degrees)
                     retry = False
-            else:
-                print_joints(actual_joints_degrees)
-                if not retry:
-                    return True
+                else:
+                    print_joints(actual_joints_degrees)
+                    if not retry:
+                        return True
 
 # ----------------------------------------------------
 ELITE_KEYWORDS = [
