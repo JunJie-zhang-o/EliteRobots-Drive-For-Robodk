@@ -534,12 +534,10 @@ def SendMOV(ip, out_script):
             if data.is_program_running:
                 if not data.is_program_paused:
                     print_joints(actual_joints_degrees)
-            else:
-                time.sleep(1)
-                if retry:
                     retry = False
-                else:
-                    print_joints(actual_joints_degrees)
+            else:
+                print_joints(actual_joints_degrees)
+                if not retry:
                     return True
 
 # ----------------------------------------------------
